@@ -33,3 +33,6 @@ Diferente do anotado acima (aquilo era o planejado). Conta Google dona do projet
 - **Feito pelo Vinícius:** importou `banco-inicial.json` (`/permitidos` + `/config`); login com Google testado e funcionando (25/11/2026).
 - **Feito pelo Vinícius:** ativou E-mail/senha e criou `esp32@portao.local` (UID `VH2QhwXbGwhya40QFhiY58C6iEV2`).
 - **Claude:** republicou as regras trocando só `UID_ESP32` por esse UID (6 lugares). O arquivo do repositório já tem o UID real.
+
+## 25/11/2026: tempo de curso do portão
+- `/config/tempoCursoMs`: **antes 15000**, agora **9000** (o portão leva 9 s para abrir ou fechar). Alterado pelo Claude no console.

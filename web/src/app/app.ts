@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { SwUpdate } from '@angular/service-worker';
 import { Entrar } from './entrar';
 import { Historico } from './historico';
 import { Portao } from './portao';
@@ -74,6 +75,19 @@ import { PortaoService } from './portao.service';
 export class App {
   protected readonly srv = inject(PortaoService);
   protected readonly aba = signal<'portao' | 'historico'>('portao');
+
+  constructor() {
+    // App instalado (PWA): quando sai versão nova do site, recarrega sozinho
+    // (sem esperar a pessoa fechar e abrir de novo). Não recarrega no meio de um comando.
+    const sw = inject(SwUpdate);
+    if (!sw.isEnabled) return;
+    sw.versionUpdates.subscribe((ev) => {
+      if (ev.type === 'VERSION_READY' && !this.srv.pendente()) document.location.reload();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void sw.checkForUpdate().catch(() => undefined);
+    });
+  }
 
   protected readonly chip = computed(() => {
     if (!this.srv.conectado()) return { cor: '#9AA6B2', texto: 'Sem internet' };

@@ -27,17 +27,19 @@ Reconstruir o app **igual ao protótipo**. Referência visual em código: `desig
 - Depois de entrar, abaixo do título: **"Entrou como {Nome} · Sair"** (13 px; "Sair" em azul, 600).
 
 ## Tela 1: Entrar
-> Atualizada em 25/11/2026: o login virou **Google** (o protótipo ainda mostra perfil + PIN).
-- Título **"Entrar"** (28 px, 700) e subtítulo "Use a sua conta Google. Você continua conectado neste aparelho." (14 px, secundário).
-- Botão **"Entrar com Google"** centralizado na altura livre: altura 56, raio 14, fundo `#E8ECF1`, texto `#0B1014` (16 px, 600), logo do Google de 20 px à esquerda. Enquanto abre: "Abrindo o Google…" e desabilitado.
-- Texto de ajuda de 13 px abaixo: padrão "Só e-mails liberados conseguem abrir o portão."; erro em coral (ex.: "O e-mail X ainda não tem acesso ao portão. Peça para liberarem.").
+> Atualizada em 25/11/2026: login com **Google** (o protótipo ainda mostra perfil + PIN).
+- No topo, a **ilustração do portão em tamanho grande** (148 px, raio 20), fechada. Ao abrir a tela ela "espia" **uma vez** (abre ~30% e fecha em 2,6 s); desligado com `prefers-reduced-motion`.
+- Título **"Abra o portão pelo celular"** (30 px, 700) e texto de apoio (15 px, secundário).
+- Botão **"Continuar com Google"** no rodapé: branco, altura 60, raio 18, sombra; logo do Google num quadrado `#F1F3F4` de 44 px à esquerda (vira um indicador girando enquanto abre o Google).
+- Ajuda de 13 px abaixo: "Só quem foi liberado consegue entrar."; erros em coral.
 
 ## Tela 2: Portão
 1. **Cartão de estado** (fundo `#1B212A`, raio 20, padding 20): rótulo "ESTADO", texto grande de estado (32 px, 700, na cor do estado) e uma linha de apoio (13 px). Dentro, a **ilustração do portão** (altura 84, raio 12, fundo `#12161C`, `overflow: hidden`):
-   - trilho: linha de 3 px `#2A3340` a 10 px do fundo;
-   - **folha do portão** 300 × 56, raio 6, listras verticais (`repeating-linear-gradient`: 6 px `#3A4656` e 14 px `#232B36`), a 12 px do topo;
-   - **bloco do motor** à esquerda: 36 × 84, `#232B36`, com a palavra "MOTOR" na vertical (10 px, 600, `#9AA6B2`), por cima da folha.
-   - A folha desliza: **fechado** `translateX(0)`, **aberto** `translateX(-250px)`, **parado** `translateX(-125px)`. Transição de 6 s linear no movimento e 0,4 s ease-out ao parar.
+   - trilho: linha de 3 px `#2A3340` a 10 px do fundo; **coluna** de 10 px à direita (`#2F3A48`), onde o portão encosta fechado;
+   - **folha do portão** ocupa da borda esquerda até a coluna (largura acompanha a tela), raio 6, listras verticais (`repeating-linear-gradient`: 6 px `#3A4656` e 14 px `#232B36`);
+   - **bloco do motor** à esquerda: 36 px, `#232B36`, com "MOTOR" na vertical, por cima da folha.
+   - A folha desliza proporcional à abertura: `translateX(calc(abertura * (-100% + 56px)))` (aberto sobra só uma ponta depois do motor). Componente `ilustracao-portao.ts`.
+   - **Curso real: 9 s** (`/config/tempoCursoMs = 9000`). Tocar durante o movimento para a folha onde ela estiver.
 2. **Botão principal**: círculo de 168 px, centralizado, com anel `box-shadow: 0 0 0 10px #1B212A`, texto de 18 px (700) em `#0B1014`. Azul normalmente; **coral** quando o rótulo é "Parar".
 3. **Cartão de aviso** (raio 16, padding 14/16, ícone de alerta âmbar de 20 px + texto de 13 px): *"Sensor de fechamento ainda não instalado. O estado mostrado é estimado pelo último comando enviado."* **Só aparece enquanto o reed não existir** (flag de configuração).
 
@@ -51,7 +53,7 @@ Reconstruir o app **igual ao protótipo**. Referência visual em código: `desig
 | Parado no meio | Parado no meio | coral | O portão não chegou ao fim | rótulo oposto ao último destino (azul) |
 
 ### Transições (protótipo)
-Fechado → toque → Abrindo → (6 s) → Aberto → toque → Fechando → (6 s) → Fechado. Toque durante o movimento → Parado no meio. Toque em Parado no meio → volta a mover para o destino **oposto** ao último.
+Fechado → toque → Abrindo → (9 s) → Aberto → toque → Fechando → (9 s) → Fechado. Toque durante o movimento → Parado no meio. Toque em Parado no meio → volta a mover para o destino **oposto** ao último.
 
 ### No app de verdade
 - Cada toque grava um comando `"acionar"` em `/comandos` (a central alterna). O app **não** decide abrir/fechar; só escolhe o rótulo.
@@ -60,12 +62,16 @@ Fechado → toque → Abrindo → (6 s) → Aberto → toque → Fechando → (6
 - Dar um feedback rápido no toque (botão desabilitado por ~1 s) para evitar toques duplos.
 
 ## Tela 3: Histórico
-- Rótulo **"QUEM ACIONOU O PORTÃO"**. Lista de cartões (raio 16, padding 14/16): à esquerda a ação (15 px, 600, ex.: "Comando: abrir") e abaixo **"por {nome}"** (13 px, secundário); à direita o horário (13 px, secundário).
-- Vazio: *"Nenhum comando ainda. Volte à aba Portão e toque no botão."*
-- No app de verdade, vem de `/historico` (mais novo primeiro, com limite e rolagem). O protótipo mostra até 12 itens, com data/hora do servidor.
+- Título "Quem acionou o portão" (22 px, 700).
+- **Filtros** lado a lado: **Pessoa** (select, "Todas" + nomes do histórico) e **Dia** (campo de data). Trocar o dia faz uma consulta no banco só daquele dia; sem dia, mostra os 200 mais recentes. "Limpar filtros" aparece quando há filtro.
+- Resumo: "N acionamentos (recentes)".
+- **Agrupado por dia** ("Hoje", "Ontem", "Segunda-feira, 24 de novembro"). Cada grupo é um cartão com linhas: **nome** (15 px, 600) e a ação ("Abriu/Fechou/Parou o portão"; "Não executado: motivo" em coral) à esquerda, **hora** (HH:mm, números tabulares) à direita.
+- Vazio: "Nenhum comando ainda. Volte ao controle e toque no botão." (ou mensagem de filtro sem resultado).
 
-## Barra inferior (só depois de entrar)
-Fundo `#1B212A`, borda superior 1 px `#2A3340`, padding 8/12/20. Duas abas lado a lado, cada uma com ícone de 22 px e rótulo de 12 px (600), altura mínima 52, raio 14: **Portão** (ícone de casa) e **Histórico** (ícone de lista). Aba ativa: fundo `#2A3340`, texto `#E8ECF1`; inativa: transparente, `#9AA6B2`.
+## Barra de navegação (só depois de entrar)
+- **Pílula flutuante centralizada** no rodapé (fixa, 18 px da borda + área segura), fundo `#1B212A` translúcido com desfoque, borda `#2A3340`, sombra.
+- Dois botões só com ícone (68 × 50): **controle remoto** (tela do portão) e **relógio** (histórico), com `aria-label`.
+- Um **destaque azul** desliza por trás do botão ativo (0,28 s; sem animação com `prefers-reduced-motion`). Ícone ativo em `#0B1014`.
 
 ## Observações
 - Os nomes no protótipo (Vinícius, Pai, Mãe, Visitante) são **exemplos**; os reais vêm de `/permitidos`.
