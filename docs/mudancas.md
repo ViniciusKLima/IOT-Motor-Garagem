@@ -31,4 +31,5 @@ Diferente do anotado acima (aquilo era o planejado). Conta Google dona do projet
 - **Google Cloud → cliente OAuth "Web client (auto created by Google Service)":** antes tinha origens `http://localhost`, `http://localhost:5000`, `https://iot-motor-garagem.firebaseapp.com` e redirect só `https://iot-motor-garagem.firebaseapp.com/__/auth/handler`. **Adicionados** a origem `https://iot-motor-garagem.vercel.app` e o redirect `https://iot-motor-garagem.vercel.app/__/auth/handler`.
 - **Sem mudança (já estavam certos):** provedor Google ativado; criação de contas ligada; domínio `iot-motor-garagem.vercel.app` autorizado.
 - **Feito pelo Vinícius:** importou `banco-inicial.json` (`/permitidos` + `/config`); login com Google testado e funcionando (25/11/2026).
-- **Pendente:** criar o usuário do ESP32 (ativar E-mail/senha, adicionar `esp32@portao.local`) e trocar `UID_ESP32` nas regras.
+- **Feito pelo Vinícius:** ativou E-mail/senha e criou `esp32@portao.local` (UID `VH2QhwXbGwhya40QFhiY58C6iEV2`).
+- **Claude:** republicou as regras trocando só `UID_ESP32` por esse UID (6 lugares). O arquivo do repositório já tem o UID real.
