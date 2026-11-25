@@ -1,4 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
+import { IlustracaoPortao } from './ilustracao-portao';
 import { PortaoService } from './portao.service';
 
 const COR = {
@@ -11,6 +12,7 @@ const COR = {
 /** Tela 2: Portão (estado, ilustração e botão principal). */
 @Component({
   selector: 'app-portao',
+  imports: [IlustracaoPortao],
   template: `
     <main class="portao">
       <section class="cartao-estado" aria-live="polite">
@@ -19,11 +21,7 @@ const COR = {
           <div class="estado-grande" [style.color]="vista().cor">{{ vista().texto }}</div>
           <div class="apoio">{{ vista().apoio }}</div>
         </div>
-        <div class="ilustracao" aria-hidden="true">
-          <div class="trilho"></div>
-          <div class="folha" [style.transform]="transformFolha()" [style.transition]="transicaoFolha()"></div>
-          <div class="motor"><span>MOTOR</span></div>
-        </div>
+        <app-ilustracao-portao [abertura]="srv.abertura()" [movendo]="movendo()" />
       </section>
 
       <div class="area-botao">
@@ -93,10 +91,8 @@ export class Portao {
     return '';
   });
 
-  protected readonly transformFolha = computed(() => `translateX(${(-250 * this.srv.abertura()).toFixed(1)}px)`);
-
-  protected readonly transicaoFolha = computed(() => {
+  protected readonly movendo = computed(() => {
     const f = this.srv.fase();
-    return f === 'abrindo' || f === 'fechando' ? 'transform 250ms linear' : 'transform 400ms ease-out';
+    return f === 'abrindo' || f === 'fechando';
   });
 }

@@ -45,22 +45,26 @@ import { PortaoService } from './portao.service';
           <app-historico />
         }
 
-        <nav class="barra" aria-label="Navegação">
+        <nav class="barra-flutuante" aria-label="Navegação">
+          <span class="barra-destaque" [class.direita]="aba() === 'historico'" aria-hidden="true"></span>
           <button type="button" class="aba" [class.ativa]="aba() === 'portao'" (click)="aba.set('portao')"
+                  aria-label="Controle do portão" title="Controle do portão"
                   [attr.aria-current]="aba() === 'portao' ? 'page' : null">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 20V8l9-5 9 5v12M7 20v-7h10v7M7 16.5h10" />
+              <rect x="7" y="2" width="10" height="20" rx="3" />
+              <circle cx="12" cy="8" r="2" />
+              <path d="M10 14h.01M14 14h.01M10 17.5h.01M14 17.5h.01" />
             </svg>
-            Portão
           </button>
           <button type="button" class="aba" [class.ativa]="aba() === 'historico'" (click)="aba.set('historico')"
+                  aria-label="Histórico" title="Histórico"
                   [attr.aria-current]="aba() === 'historico' ? 'page' : null">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
             </svg>
-            Histórico
           </button>
         </nav>
       }

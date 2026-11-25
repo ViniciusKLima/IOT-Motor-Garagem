@@ -22,6 +22,9 @@ import {
   query,
   ref,
   set,
+  startAt,
+  endAt,
+  DataSnapshot,
 } from 'firebase/database';
 import { environment } from '../environments/environment';
 import { AcaoPulso, Fase, aberturaEm, faseEm, reproduzir } from './estado-portao';
@@ -71,7 +74,24 @@ export interface ItemHistorico {
 const OFFLINE_APOS_MS = 15000;
 /** Tempo máximo esperando o ESP32 confirmar um comando no /historico. */
 const ESPERA_CONFIRMACAO_MS = 12000;
-const CONFIG_PADRAO: ConfigApp = { sensorInstalado: false, tempoCursoMs: 15000 };
+/** O portão leva 9 s para abrir ou fechar por completo (medido em 25/11/2026). */
+const CONFIG_PADRAO: ConfigApp = { sensorInstalado: false, tempoCursoMs: 9000 };
+
+function lerHistorico(s: DataSnapshot): ItemHistorico[] {
+  const itens: ItemHistorico[] = [];
+  s.forEach((filho) => {
+    const v = filho.val() ?? {};
+    itens.push({
+      id: filho.key!,
+      nome: String(v.nome ?? '?'),
+      acao: String(v.acao ?? ''),
+      ts: Number(v.ts) || 0,
+      resultado: v.resultado,
+      comandoId: v.comandoId,
+    });
+  });
+  return itens;
+}
 
 @Injectable({ providedIn: 'root' })
 export class PortaoService {
@@ -98,6 +118,10 @@ export class PortaoService {
   readonly historico = signal<ItemHistorico[]>([]);
   readonly historicoCarregado = signal(false);
   readonly pendente = signal<{ id: string; desde: number } | null>(null);
+  /** Histórico da aba Histórico (pode ser filtrado por dia). */
+  readonly historicoTela = signal<ItemHistorico[]>([]);
+  readonly historicoTelaCarregado = signal(false);
+  private pararHistoricoTela?: Unsubscribe;
   readonly erroComando = signal<string | null>(null);
   readonly erroLogin = signal<string | null>(null);
 
@@ -210,18 +234,7 @@ export class PortaoService {
       onValue(ref(db, 'estado'), (s) => this.estado.set(s.val())),
       onValue(ref(db, 'config'), (s) => this.config.set({ ...CONFIG_PADRAO, ...(s.val() ?? {}) })),
       onValue(query(ref(db, 'historico'), orderByChild('ts'), limitToLast(50)), (s) => {
-        const itens: ItemHistorico[] = [];
-        s.forEach((filho) => {
-          const v = filho.val() ?? {};
-          itens.push({
-            id: filho.key!,
-            nome: String(v.nome ?? '?'),
-            acao: String(v.acao ?? ''),
-            ts: Number(v.ts) || 0,
-            resultado: v.resultado,
-            comandoId: v.comandoId,
-          });
-        });
+        const itens = lerHistorico(s);
         this.historico.set(itens);
         this.historicoCarregado.set(true);
         const p = this.pendente();
@@ -230,9 +243,45 @@ export class PortaoService {
     );
   }
 
+  /**
+   * Histórico para a aba Histórico.
+   * dia = 'AAAA-MM-DD' (dia inteiro, no fuso do aparelho) ou null (últimos 200).
+   */
+  filtrarHistorico(dia: string | null): void {
+    if (!this.db || !this.usuario()) return;
+    this.pararHistoricoTela?.();
+    this.historicoTelaCarregado.set(false);
+    const base = ref(this.db, 'historico');
+    let q;
+    if (dia) {
+      const [a, m, d] = dia.split('-').map(Number);
+      const inicio = new Date(a, m - 1, d).getTime();
+      const fim = new Date(a, m - 1, d + 1).getTime() - 1;
+      q = query(base, orderByChild('ts'), startAt(inicio), endAt(fim));
+    } else {
+      q = query(base, orderByChild('ts'), limitToLast(200));
+    }
+    this.pararHistoricoTela = onValue(
+      q,
+      (s) => {
+        this.historicoTela.set(lerHistorico(s));
+        this.historicoTelaCarregado.set(true);
+      },
+      () => this.historicoTelaCarregado.set(true),
+    );
+  }
+
+  pararFiltroHistorico(): void {
+    this.pararHistoricoTela?.();
+    this.pararHistoricoTela = undefined;
+  }
+
   private pararEscutas(): void {
     this.escutasLogado.forEach((parar) => parar());
     this.escutasLogado = [];
+    this.pararFiltroHistorico();
+    this.historicoTela.set([]);
+    this.historicoTelaCarregado.set(false);
     this.estado.set(null);
     this.historico.set([]);
     this.historicoCarregado.set(false);
