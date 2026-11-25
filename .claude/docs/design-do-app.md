@@ -27,11 +27,10 @@ Reconstruir o app **igual ao protótipo**. Referência visual em código: `desig
 - Depois de entrar, abaixo do título: **"Entrou como {Nome} · Sair"** (13 px; "Sair" em azul, 600).
 
 ## Tela 1: Entrar
-- Título **"Entrar"** (28 px, 700) e subtítulo "Escolha quem você é e digite seu PIN." (14 px, secundário).
-- **Select de perfil** (rótulo "PERFIL"): altura 52, borda 1 px `#2A3340`, fundo `#1B212A`, raio 14, fonte 16. Primeira opção "Escolher perfil". Os perfis vêm do Firebase (`/perfis`).
-- **PIN** (rótulo "PIN"): 6 pontinhos de 16 px, espaçamento 14; vazio `#2A3340`, preenchido azul. Abaixo, texto de ajuda de 13 px: padrão **"PIN de 6 dígitos"**; se digitar sem escolher o perfil: **"Escolha o perfil primeiro"**.
-- **Teclado numérico**: grade de 3 colunas, espaçamento 12; botões de 68 px de altura, fundo `#1B212A`, número 26 px (600). Última linha: espaço vazio, **0**, **←** (apagar, `aria-label="Apagar"`). Teclado grudado embaixo da tela.
-- Ao completar o 6º dígito, espera ~250 ms e tenta entrar (Firebase Auth com o e-mail do perfil + PIN). Erro de PIN: limpar os pontinhos e mostrar o texto de ajuda em coral ("PIN incorreto").
+> Atualizada em 25/11/2026: o login virou **Google** (o protótipo ainda mostra perfil + PIN).
+- Título **"Entrar"** (28 px, 700) e subtítulo "Use a sua conta Google. Você continua conectado neste aparelho." (14 px, secundário).
+- Botão **"Entrar com Google"** centralizado na altura livre: altura 56, raio 14, fundo `#E8ECF1`, texto `#0B1014` (16 px, 600), logo do Google de 20 px à esquerda. Enquanto abre: "Abrindo o Google…" e desabilitado.
+- Texto de ajuda de 13 px abaixo: padrão "Só e-mails liberados conseguem abrir o portão."; erro em coral (ex.: "O e-mail X ainda não tem acesso ao portão. Peça para liberarem.").
 
 ## Tela 2: Portão
 1. **Cartão de estado** (fundo `#1B212A`, raio 20, padding 20): rótulo "ESTADO", texto grande de estado (32 px, 700, na cor do estado) e uma linha de apoio (13 px). Dentro, a **ilustração do portão** (altura 84, raio 12, fundo `#12161C`, `overflow: hidden`):
@@ -69,5 +68,4 @@ Fechado → toque → Abrindo → (6 s) → Aberto → toque → Fechando → (6
 Fundo `#1B212A`, borda superior 1 px `#2A3340`, padding 8/12/20. Duas abas lado a lado, cada uma com ícone de 22 px e rótulo de 12 px (600), altura mínima 52, raio 14: **Portão** (ícone de casa) e **Histórico** (ícone de lista). Aba ativa: fundo `#2A3340`, texto `#E8ECF1`; inativa: transparente, `#9AA6B2`.
 
 ## Observações
-- Os nomes dos perfis no protótipo (Vinícius, Pai, Mãe, Visitante) são **exemplos**; os reais vêm do Firebase.
-- Qualquer PIN de 6 dígitos entra no protótipo; no app de verdade a validação é do Firebase Auth.
+- Os nomes no protótipo (Vinícius, Pai, Mãe, Visitante) são **exemplos**; os reais vêm de `/permitidos`.

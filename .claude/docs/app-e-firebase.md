@@ -1,17 +1,24 @@
 # App e Firebase
 
-## Login (sem cadastro)
-- Tela **Entrar**: um **select de perfil** + **teclado numérico de PIN com 6 dígitos**. Entra automaticamente ao completar o PIN.
-- Os usuários são criados **direto no console do Firebase** (Authentication, e-mail/senha). Um e-mail fictício por perfil (ex.: `nome@portao.local`), e o **PIN é a senha**.
-- O Firebase Auth exige senha de **no mínimo 6 caracteres**; por isso o PIN tem 6 dígitos. O Firebase limita tentativas erradas.
-- O PIN **não** é guardado no banco, só no Auth.
-- A lista de perfis vem de `/perfis/{uid}` = `{ nome, email }`, com **leitura pública** (o app precisa do e-mail **antes** de logar). O ESP32 **não** fica em `/perfis`.
-- **Criação de contas pelo cliente desligada** (Authentication → Configurações → Ações do usuário → desmarcar "Ativar criação"). Sem isso, qualquer um cria conta pela API com a chave pública.
-- Botão **Sair** depois de entrar.
+## Login (com Google, sem cadastro)
+- Tela **Entrar**: um botão **"Entrar com Google"**. A sessão fica salva no aparelho (só sai clicando em Sair).
+- Quem pode abrir: lista **`/permitidos/{email}` = `{ nome }`**, editada no console. A chave é o e-mail em minúsculas com **`,` no lugar de `.`** (o RTDB não aceita ponto na chave). Ex.: `fulano@gmail.com` → `fulano@gmail,com`.
+- Qualquer conta Google consegue logar no Firebase, mas sem estar em `/permitidos` não lê nada nem envia comando; o site mostra "ainda não tem acesso" e desloga.
+- A **criação de contas precisa estar ligada** no Auth (senão contas Google novas não entram); a proteção é a lista.
+- Celular e app instalado (PWA) usam login por **redirecionamento**; computador usa popup. Para funcionar no Safari/iPhone, o `authDomain` é o domínio do site (`iot-motor-garagem.vercel.app`) e o `web/vercel.json` repassa `/__/auth/*` para `iot-motor-garagem.firebaseapp.com`. O service worker ignora `/__/*`.
+- O ESP32 continua com usuário **e-mail/senha** próprio (manter esse provedor ativo).
+
+### Configuração no console (uma vez)
+1. Authentication → Método de login → **Google** → ativar (escolher o e-mail de suporte).
+2. Authentication → Configurações → Ações do usuário → **marcar "Ativar criação (inscrição)"**.
+3. Authentication → Configurações → **Domínios autorizados** → adicionar `iot-motor-garagem.vercel.app`.
+4. Google Cloud Console (mesmo projeto) → APIs e serviços → **Credenciais** → cliente OAuth "Web client (auto created by Google Service)" → **URIs de redirecionamento autorizados** → adicionar `https://iot-motor-garagem.vercel.app/__/auth/handler`.
+5. Realtime Database → Dados → importar o `permitidos.json` **no nó `/permitidos`** (não na raiz).
+6. Realtime Database → Regras → colar `firebase/database.rules.json` trocando `UID_ESP32` (todos os lugares) e publicar.
 
 ## Dados (Realtime Database)
 ```
-/perfis/{uid}        { nome, email }                                   <- console (leitura pública)
+/permitidos/{email}  { nome }                                          <- console (cada um lê só o seu)
 /config              { sensorInstalado: false, tempoCursoMs }          <- console
 /comandos/{pushId}   { uid, nome, acao: "acionar", ts }                <- app (ts = relógio do servidor)
 /estado              { visto, rssi, ultimoComandoTs, sensorFechado? }  <- ESP32
@@ -23,26 +30,18 @@
 
 ## Segurança dos comandos (importante)
 - Regras **publicadas a partir de** `firebase/database.rules.json` (trocar `UID_ESP32` pelo UID real em todos os lugares). Publicar pelo console ou `firebase deploy --only database`.
-- Só usuário com perfil em `/perfis` cria comando; `uid` e `nome` precisam ser os dele (não dá para falsificar o "quem"); `acao` só `"acionar"`; comando não pode ser editado depois de criado.
+- Só quem está em `/permitidos` (e-mail Google verificado) cria comando; `uid` e `nome` precisam ser os dele (não dá para falsificar o "quem"); `acao` só `"acionar"`; comando não pode ser editado depois de criado.
 - O **servidor recusa** `ts` com mais de 10 s (cobre o celular sem internet que envia o toque guardado minutos depois). O app também desabilita o botão quando `.info/connected` é falso.
 - O ESP32 **também ignora comandos antigos** (> ~10 s, via NTP; sem hora sincronizada, **recusa tudo**), executa cada comando **uma vez** (por id) com **cooldown de ~2 s**, e **apaga** o comando depois de executar.
-- O ESP32 tem **usuário próprio** (senha longa, não PIN): é o único que lê `/comandos`, apaga comandos e escreve `/estado` e `/historico`.
+- O ESP32 tem **usuário próprio** (e-mail/senha, senha longa): é o único que lê `/comandos`, apaga comandos e escreve `/estado` e `/historico`.
 - Registrar no `docs/mudancas.md` o estado anterior das regras antes de qualquer alteração.
 
 ## Passo a passo para criar o banco
-1. Console Firebase → novo projeto (ex.: `portao-garagem`), sem Analytics.
-2. Realtime Database → criar → **us-central1** → **modo bloqueado**. Anotar a URL.
-3. Authentication → E-mail/senha ativado → Configurações → desmarcar **criação de contas** e manter a proteção contra enumeração de e-mail.
-4. Criar os usuários (um por pessoa, PIN de 6 dígitos; `esp32@portao.local` com senha longa). Copiar os UIDs.
-5. Importar `/perfis` e `/config` (JSON) com os UIDs reais.
-6. Publicar `firebase/database.rules.json` com o UID do ESP32.
-7. Testar no Rules Playground: anônimo grava comando (negado); perfil grava comando correto (permitido); nome trocado (negado); perfil escreve em `/historico` (negado).
-8. Registrar app Web e copiar o `firebaseConfig` para `web/src/environments/environment.ts`.
-9. Anotar em `docs/mudancas.md`: id do projeto, URL, e-mails e UIDs, data das regras. **Nunca** PINs/senhas.
+Feito em 25/11/2026 (projeto `iot-motor-garagem`, RTDB em us-central1). Para o login com Google, seguir "Configuração no console" acima. Anotar em `docs/mudancas.md` o estado anterior antes de mexer. **Nunca** anotar senhas.
 
 ## Telas (protótipo clicável já feito)
 Link: https://claude.ai/artifact/5AY6BDTKsBkCRKN25QdbL9 (tema escuro, 390×844). Cópia local: `design/prototipo/Main.dc.html`. Especificação completa (cores, tamanhos, estados): `design-do-app.md`.
-1. **Entrar:** select de perfil, 6 pontinhos de PIN, teclado numérico.
+1. **Entrar:** botão "Entrar com Google" (substituiu perfil + PIN em 25/11/2026).
 2. **Portão:** estado grande (*Fechado, Abrindo…, Aberto, Parado no meio*), ilustração do portão deslizando, botão redondo grande (*Abrir portão / Fechar portão / Parar*), chip "ESP32 online" e o aviso de sensor não instalado.
 3. **Histórico:** "Quem acionou o portão", com o nome, a ação e o horário.
 4. Barra inferior com duas abas: Portão e Histórico. Mostra "Entrou como X · Sair".

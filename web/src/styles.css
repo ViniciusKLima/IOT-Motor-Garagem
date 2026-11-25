@@ -122,28 +122,31 @@ app-entrar, app-portao, app-historico { flex: 1; display: flex; flex-direction: 
   font-size: 16px;
   padding: 0 16px;
 }
-.pin { display: flex; flex-direction: column; gap: 12px; align-items: center; }
-.pontos { display: flex; gap: 14px; height: 20px; align-items: center; }
-.ponto { width: 16px; height: 16px; border-radius: 50%; background: var(--linha); transition: background 0.15s; }
-.ponto.cheio { background: var(--azul); }
-.ajuda { font-size: 13px; color: var(--texto-2); min-height: 18px; }
-.ajuda.erro, .dica.erro { color: var(--coral); }
-.teclado {
+.entrar-acoes {
   margin-top: auto;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+.botao-google {
+  height: 56px;
+  border-radius: 14px;
+  border: 1px solid var(--linha);
+  background: var(--texto);
+  color: var(--sobre-cor);
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
 }
-.tecla {
-  height: 68px;
-  border: 0;
-  border-radius: 18px;
-  background: var(--cartao);
-  color: var(--texto);
-  font-size: 26px;
-  font-weight: 600;
-}
-.tecla:active { background: var(--linha); }
+.botao-google:active:not(:disabled) { transform: scale(0.98); }
+.botao-google:disabled { opacity: 0.6; }
+.ajuda { font-size: 13px; color: var(--texto-2); min-height: 18px; text-align: center; line-height: 1.45; }
+.ajuda.erro, .dica.erro { color: var(--coral); }
 
 /* ---------- Tela Portão ---------- */
 .portao {

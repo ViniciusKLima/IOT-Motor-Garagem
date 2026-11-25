@@ -14,7 +14,7 @@ import { PortaoService } from './portao.service';
           <div class="rotulo">MINHA CASA</div>
           <h1 class="titulo">Portão da garagem</h1>
         </div>
-        @if (srv.usuario()) {
+        @if (srv.liberado()) {
           <div class="pilula" role="status">
             <span class="bolinha" [style.background]="chip().cor"></span>
             <span>{{ chip().texto }}</span>
@@ -28,13 +28,13 @@ import { PortaoService } from './portao.service';
           <p>Cole o <code>firebaseConfig</code> do seu projeto em
             <code>web/src/environments/environment.ts</code> e publique de novo.</p>
         </main>
-      } @else if (srv.usuario() === undefined) {
+      } @else if (srv.usuario() === undefined || (srv.usuario() && srv.acesso() === undefined)) {
         <main class="carregando">Carregando…</main>
-      } @else if (!srv.usuario()) {
+      } @else if (!srv.liberado()) {
         <app-entrar />
       } @else {
         <div class="entrou-como">
-          <span>Entrou como <strong>{{ srv.perfilAtual()?.nome ?? '…' }}</strong></span>
+          <span>Entrou como <strong>{{ srv.acesso()?.nome }}</strong></span>
           <span aria-hidden="true">·</span>
           <button type="button" class="link" (click)="srv.sair()">Sair</button>
         </div>

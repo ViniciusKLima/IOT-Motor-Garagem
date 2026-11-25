@@ -1,6 +1,6 @@
 # Portão da garagem IoT (ESP32 + Firebase)
 
-Abrir o portão da garagem de casa (motor Rossi, portão de correr) pelo celular/web, com login por perfil + PIN e registro de quem acionou. Hoje usamos controles genéricos que quebram toda hora.
+Abrir o portão da garagem de casa (motor Rossi, portão de correr) pelo celular/web, com login Google (lista de e-mails liberados) e registro de quem acionou. Hoje usamos controles genéricos que quebram toda hora.
 
 ## Como trabalhar neste projeto
 - Responder e comentar o código em português do Brasil.
@@ -22,14 +22,13 @@ Abrir o portão da garagem de casa (motor Rossi, portão de correr) pelo celular
 1. O ESP32 aciona a **botoeira (BOT) da central Rossi por um relé**, com contato seco. Não copiar o sinal de RF (controles Rossi são rolling code) e não soldar no controle.
 2. **Sem solda**: jumpers, bornes de parafuso, protoboard ou shield com bornes.
 3. **Sem fotocélula** (não usam e não querem). Cuidado extra ao fechar pelo app, sem sensor de obstáculo.
-4. Login simples: **tela com seleção de perfil + PIN numérico**. Sem cadastro; os usuários são criados direto no Firebase. Objetivo: log de **quem** abriu.
-   - **Risco aceito pelo Vinícius (25/11/2026):** os e-mails de login ficam legíveis em `/perfis` (leitura pública) e o PIN de 6 dígitos é a senha no Firebase Auth. Não exigir senha forte nem etapa extra; não reabrir esse assunto. O PIN só vale para este app (não é a senha do Gmail).
+4. Login **com Google** (decidido em 25/11/2026, substituiu perfil + PIN). Quem pode abrir o portão está na lista `/permitidos` do banco (e-mail → nome), editada no console. Sem cadastro no app. Objetivo: log de **quem** abriu. O ESP32 tem usuário próprio (e-mail/senha) só para gravar online/histórico; quem valida a pessoa são as regras do banco, não o ESP32.
 5. O sensor reed fica para depois (comprar). Quando chegar: 1 sensor perto do motor (portão fechado), 2º opcional.
 6. Tudo o que for possível fica junto do motor, numa caixa plástica fechada.
 
 ## Arquitetura (resumo)
 ```
-App/Web (Angular PWA, Vercel) --Firebase Auth (perfil+PIN)--> Firebase RTDB
+App/Web (Angular PWA, Vercel) --Firebase Auth (Google)--> Firebase RTDB
                                                                 |  /comandos
 ESP32 (no motor) <------ escuta /comandos, valida ---------------+
    |-- GPIO26 -> módulo relé -> COM→GND, NO→BOT (central Rossi)

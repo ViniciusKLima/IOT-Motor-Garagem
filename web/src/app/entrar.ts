@@ -1,101 +1,33 @@
-import { Component, inject, signal } from '@angular/core';
-import { Perfil, PortaoService } from './portao.service';
+import { Component, inject } from '@angular/core';
+import { PortaoService } from './portao.service';
 
-/** Tela 1: Entrar (perfil + PIN de 6 dígitos). */
+/** Tela 1: Entrar com a conta Google. Só entra quem está em /permitidos. */
 @Component({
   selector: 'app-entrar',
   template: `
     <main class="entrar">
       <div class="titulo-bloco">
         <h2 class="titulo-tela">Entrar</h2>
-        <p class="subtitulo">Escolha quem você é e digite seu PIN.</p>
+        <p class="subtitulo">Use a sua conta Google. Você continua conectado neste aparelho.</p>
       </div>
 
-      <div class="campo">
-        <label for="perfil" class="rotulo">PERFIL</label>
-        <select id="perfil" class="select" [value]="perfilUid()" (change)="escolher($any($event.target).value)">
-          <option value="">{{ srv.perfisCarregados() ? 'Escolher perfil' : 'Carregando…' }}</option>
-          @for (p of srv.perfis(); track p.uid) {
-            <option [value]="p.uid">{{ p.nome }}</option>
-          }
-        </select>
-      </div>
-
-      <div class="pin">
-        <div class="rotulo">PIN</div>
-        <div class="pontos" role="img" [attr.aria-label]="pin().length + ' de 6 dígitos digitados'">
-          @for (i of seis; track i) {
-            <span class="ponto" [class.cheio]="i < pin().length"></span>
-          }
+      <div class="entrar-acoes">
+        <button type="button" class="botao-google" (click)="srv.entrar()" [disabled]="srv.entrando()">
+          <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+            <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+          </svg>
+          {{ srv.entrando() ? 'Abrindo o Google…' : 'Entrar com Google' }}
+        </button>
+        <div class="ajuda" [class.erro]="!!srv.erroLogin()" aria-live="polite">
+          {{ srv.erroLogin() ?? 'Só e-mails liberados conseguem abrir o portão.' }}
         </div>
-        <div class="ajuda" [class.erro]="erro()" aria-live="polite">{{ ajuda() }}</div>
-      </div>
-
-      <div class="teclado">
-        @for (t of teclas; track $index) {
-          @if (t === '') {
-            <span></span>
-          } @else if (t === 'apagar') {
-            <button type="button" class="tecla" aria-label="Apagar" (click)="apagar()" [disabled]="entrando()">←</button>
-          } @else {
-            <button type="button" class="tecla" [attr.aria-label]="'Dígito ' + t" (click)="digitar(t)" [disabled]="entrando()">
-              {{ t }}
-            </button>
-          }
-        }
       </div>
     </main>
   `,
 })
 export class Entrar {
   protected readonly srv = inject(PortaoService);
-  protected readonly seis = [0, 1, 2, 3, 4, 5];
-  protected readonly teclas = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'apagar'];
-
-  protected readonly perfilUid = signal('');
-  protected readonly pin = signal('');
-  protected readonly ajuda = signal(this.srv.erroLogin() ?? 'PIN de 6 dígitos');
-  protected readonly erro = signal(!!this.srv.erroLogin());
-  protected readonly entrando = signal(false);
-
-  private mensagem(texto: string, erro = false): void {
-    this.ajuda.set(texto);
-    this.erro.set(erro);
-  }
-
-  protected escolher(uid: string): void {
-    this.perfilUid.set(uid);
-    this.pin.set('');
-    this.mensagem('PIN de 6 dígitos');
-  }
-
-  protected apagar(): void {
-    this.pin.update((p) => p.slice(0, -1));
-    this.mensagem('PIN de 6 dígitos');
-  }
-
-  protected digitar(d: string): void {
-    const perfil = this.srv.perfis().find((p) => p.uid === this.perfilUid());
-    if (!perfil) {
-      this.mensagem('Escolha o perfil primeiro', true);
-      return;
-    }
-    if (this.pin().length >= 6) return;
-    this.pin.update((p) => p + d);
-    this.mensagem('PIN de 6 dígitos');
-    if (this.pin().length === 6) {
-      this.entrando.set(true);
-      setTimeout(() => this.tentar(perfil), 250);
-    }
-  }
-
-  private async tentar(perfil: Perfil): Promise<void> {
-    this.mensagem('Entrando…');
-    const erro = await this.srv.entrar(perfil, this.pin());
-    this.entrando.set(false);
-    if (erro) {
-      this.pin.set('');
-      this.mensagem(erro, true);
-    }
-  }
 }

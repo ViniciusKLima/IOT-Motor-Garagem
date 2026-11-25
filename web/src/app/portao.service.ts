@@ -1,6 +1,16 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { FirebaseApp, initializeApp } from 'firebase/app';
-import { Auth, User, getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import {
+  Auth,
+  GoogleAuthProvider,
+  User,
+  getAuth,
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from 'firebase/auth';
 import {
   Database,
   Unsubscribe,
@@ -18,17 +28,21 @@ import { AcaoPulso, Fase, aberturaEm, faseEm, reproduzir } from './estado-portao
 
 // ============================================================
 // Estrutura do banco (ver .claude/docs/app-e-firebase.md):
-//   /perfis/{uid}       { nome, email }             leitura pública
+//   /permitidos/{email} { nome }   e-mail com ',' no lugar de '.'
+//                       (lista de quem pode abrir; editada no console)
 //   /config             { sensorInstalado, tempoCursoMs }
 //   /comandos/{id}      { uid, nome, acao: 'acionar', ts }   <- este app
 //   /estado             { visto, rssi, sensorFechado? }      <- ESP32
 //   /historico/{id}     { nome, acao, ts, resultado, comandoId? } <- ESP32
 // ============================================================
 
-export interface Perfil {
-  uid: string;
+export interface Acesso {
   nome: string;
-  email: string;
+}
+
+/** Chave de /permitidos: e-mail em minúsculas com ',' no lugar de '.' (o RTDB não aceita '.'). */
+export function chaveEmail(email: string): string {
+  return email.trim().toLowerCase().replaceAll('.', ',');
 }
 
 export interface EstadoEsp {
@@ -67,12 +81,14 @@ export class PortaoService {
   private auth?: Auth;
   private db?: Database;
   private escutasLogado: Unsubscribe[] = [];
+  private pararAcesso?: Unsubscribe;
 
   // ---------- estado bruto ----------
-  readonly perfis = signal<Perfil[]>([]);
-  readonly perfisCarregados = signal(false);
   /** undefined = ainda verificando se já havia alguém logado. */
   readonly usuario = signal<User | null | undefined>(undefined);
+  /** undefined = conferindo a lista /permitidos; null = sem acesso. */
+  readonly acesso = signal<Acesso | null | undefined>(undefined);
+  readonly entrando = signal(false);
   /** Navegador conectado ao Firebase (.info/connected). */
   readonly conectado = signal(false);
   private readonly offset = signal(0);
@@ -89,10 +105,8 @@ export class PortaoService {
   /** "Agora" no relógio do servidor (não depende da hora do celular). */
   readonly agoraServidor = computed(() => this.relogio() + this.offset());
 
-  readonly perfilAtual = computed(() => {
-    const u = this.usuario();
-    return u ? (this.perfis().find((p) => p.uid === u.uid) ?? null) : null;
-  });
+  /** Logado E na lista de permitidos. */
+  readonly liberado = computed(() => !!this.usuario() && !!this.acesso());
 
   readonly espOnline = computed(() => {
     const visto = this.estado()?.visto;
@@ -151,29 +165,33 @@ export class PortaoService {
     onValue(ref(db, '.info/connected'), (s) => this.conectado.set(s.val() === true));
     onValue(ref(db, '.info/serverTimeOffset'), (s) => this.offset.set(Number(s.val()) || 0));
 
-    onValue(
-      ref(db, 'perfis'),
-      (s) => {
-        const lista: Perfil[] = [];
-        s.forEach((filho) => {
-          const v = filho.val() ?? {};
-          if (typeof v.nome === 'string' && typeof v.email === 'string') {
-            lista.push({ uid: filho.key!, nome: v.nome, email: v.email });
-          }
-        });
-        lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-        this.perfis.set(lista);
-        this.perfisCarregados.set(true);
-        this.validarPerfil();
-      },
-      () => this.perfisCarregados.set(true),
-    );
+    // Volta do login por redirecionamento (celular / app instalado)
+    getRedirectResult(this.auth).catch((e) => this.erroLogin.set(this.mensagemErro(e)));
 
     onAuthStateChanged(this.auth, (u) => {
       this.usuario.set(u);
       this.pararEscutas();
-      if (u) this.escutarLogado(db);
-      this.validarPerfil();
+      this.pararAcesso?.();
+      this.pararAcesso = undefined;
+      this.acesso.set(u ? undefined : null);
+      if (!u) return;
+
+      const email = u.email ?? '';
+      this.pararAcesso = onValue(
+        ref(db, `permitidos/${chaveEmail(email)}`),
+        (s) => {
+          const nome = s.val()?.nome;
+          if (typeof nome === 'string' && nome) {
+            const novo = !this.acesso();
+            this.acesso.set({ nome });
+            this.erroLogin.set(null);
+            if (novo) this.escutarLogado(db);
+          } else {
+            this.semAcesso(email);
+          }
+        },
+        () => this.semAcesso(email),
+      );
     });
 
     // Relógio da tela (anima o portão e o chip online/offline).
@@ -222,45 +240,71 @@ export class PortaoService {
     this.erroComando.set(null);
   }
 
-  /** Conta logada que não está em /perfis (ex.: a do ESP32) não usa o app. */
-  private validarPerfil(): void {
-    const u = this.usuario();
-    if (u && this.perfisCarregados() && !this.perfilAtual()) {
-      this.erroLogin.set('Este usuário não tem perfil no app.');
-      void this.sair();
-    }
+  private semAcesso(email: string): void {
+    this.acesso.set(null);
+    this.erroLogin.set(`O e-mail ${email} ainda não tem acesso ao portão. Peça para liberarem.`);
+    void this.sair(false);
   }
 
-  /** Devolve null se entrou, ou a mensagem de erro. */
-  async entrar(perfil: Perfil, pin: string): Promise<string | null> {
-    if (!this.auth) return 'Firebase não configurado.';
+  private mensagemErro(e: unknown): string {
+    const codigo = (e as { code?: string })?.code ?? '';
+    if (codigo === 'auth/network-request-failed') return 'Sem internet. Tente de novo.';
+    if (codigo === 'auth/user-disabled') return 'Esta conta está desativada.';
+    if (codigo === 'auth/unauthorized-domain') return 'Este endereço não está autorizado no Firebase.';
+    return 'Não foi possível entrar com o Google. Tente de novo.';
+  }
+
+  /** App instalado na tela inicial (PWA): popup costuma falhar, usa redirecionamento. */
+  private emModoApp(): boolean {
+    return (
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true
+    );
+  }
+
+  /** Entra com a conta Google. */
+  async entrar(): Promise<void> {
+    if (!this.auth || this.entrando()) return;
     this.erroLogin.set(null);
+    this.entrando.set(true);
+    const provedor = new GoogleAuthProvider();
+    provedor.setCustomParameters({ prompt: 'select_account' });
     try {
-      await signInWithEmailAndPassword(this.auth, perfil.email, pin);
-      return null;
+      if (this.emModoApp()) {
+        await signInWithRedirect(this.auth, provedor);
+        return; // a página sai e volta logada
+      }
+      await signInWithPopup(this.auth, provedor);
     } catch (e: unknown) {
       const codigo = (e as { code?: string })?.code ?? '';
-      if (codigo === 'auth/too-many-requests') return 'Muitas tentativas. Aguarde alguns minutos.';
-      if (codigo === 'auth/network-request-failed') return 'Sem internet. Tente de novo.';
-      if (codigo === 'auth/user-disabled') return 'Este perfil está desativado.';
-      return 'PIN incorreto';
+      if (codigo === 'auth/popup-blocked' || codigo === 'auth/operation-not-supported-in-this-environment') {
+        await signInWithRedirect(this.auth, provedor);
+        return;
+      }
+      if (codigo !== 'auth/popup-closed-by-user' && codigo !== 'auth/cancelled-popup-request') {
+        this.erroLogin.set(this.mensagemErro(e));
+      }
+    } finally {
+      this.entrando.set(false);
     }
   }
 
-  async sair(): Promise<void> {
+  /** limparErro = false mantém a mensagem de "sem acesso" na tela. */
+  async sair(limparErro = true): Promise<void> {
+    if (limparErro) this.erroLogin.set(null);
     if (this.auth) await signOut(this.auth);
   }
 
   /** Grava um comando "acionar" (um pulso no BOT). */
   async acionar(): Promise<void> {
     const u = this.usuario();
-    const p = this.perfilAtual();
-    if (!this.db || !u || !p || this.pendente()) return;
+    const a = this.acesso();
+    if (!this.db || !u || !a || this.pendente()) return;
     const novo = push(ref(this.db, 'comandos'));
     this.erroComando.set(null);
     this.pendente.set({ id: novo.key!, desde: Date.now() });
     try {
-      await set(novo, { uid: u.uid, nome: p.nome, acao: 'acionar', ts: Date.now() + this.offset() });
+      await set(novo, { uid: u.uid, nome: a.nome, acao: 'acionar', ts: Date.now() + this.offset() });
     } catch {
       this.pendente.set(null);
       this.erroComando.set('O servidor recusou o comando. Confira a internet e tente de novo.');

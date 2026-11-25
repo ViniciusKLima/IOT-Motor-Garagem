@@ -11,3 +11,4 @@ firmware/**/secrets.h
 
 # Dados reais do banco (UIDs, e-mails): nunca versionar
 users.json
+permitidos.json

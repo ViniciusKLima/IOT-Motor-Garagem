@@ -5,7 +5,9 @@
 export const environment = {
   firebase: {
     apiKey: 'AIzaSyBd2HXNvDiICJo9EZk1LNxlwS9aNXeWMn8',
-    authDomain: 'iot-motor-garagem.firebaseapp.com',
+    // Login pelo próprio domínio do site (o vercel.json repassa /__/auth para o Firebase).
+    // Necessário para o login com Google funcionar no iPhone/Safari e no app instalado.
+    authDomain: 'iot-motor-garagem.vercel.app',
     databaseURL: 'https://iot-motor-garagem-default-rtdb.firebaseio.com',
     projectId: 'iot-motor-garagem',
     storageBucket: 'iot-motor-garagem.firebasestorage.app',
