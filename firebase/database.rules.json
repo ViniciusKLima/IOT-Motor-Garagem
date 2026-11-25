@@ -3,12 +3,12 @@
     "permitidos": {
       ".write": false,
       "$email": {
-        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $email"
+        ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && auth.token.email.toLowerCase().replace('.', ',') === $email"
       }
     },
 
     "config": {
-      ".read": "auth != null && ((auth.token.email_verified === true && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'UID_ESP32')",
+      ".read": "auth != null && ((auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'UID_ESP32')",
       ".write": false
     },
 
@@ -16,7 +16,7 @@
       ".read": "auth != null && auth.uid === 'UID_ESP32'",
       ".indexOn": ["ts"],
       "$id": {
-        ".write": "auth != null && ((!data.exists() && auth.token.email_verified === true && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || (auth.uid === 'UID_ESP32' && !newData.exists()))",
+        ".write": "auth != null && ((!data.exists() && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || (auth.uid === 'UID_ESP32' && !newData.exists()))",
         ".validate": "newData.hasChildren(['uid', 'nome', 'acao', 'ts'])",
         "uid":  { ".validate": "newData.val() === auth.uid" },
         "nome": { ".validate": "newData.val() === root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).child('nome').val()" },
@@ -27,12 +27,12 @@
     },
 
     "estado": {
-      ".read": "auth != null && ((auth.token.email_verified === true && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'UID_ESP32')",
+      ".read": "auth != null && ((auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'UID_ESP32')",
       ".write": "auth != null && auth.uid === 'UID_ESP32'"
     },
 
     "historico": {
-      ".read": "auth != null && auth.token.email_verified === true && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+      ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
       ".indexOn": ["ts"],
       "$id": { ".write": "auth != null && auth.uid === 'UID_ESP32'" }
     }
