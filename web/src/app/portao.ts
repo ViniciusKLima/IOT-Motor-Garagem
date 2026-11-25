@@ -55,7 +55,7 @@ export class Portao {
   protected readonly srv = inject(PortaoService);
 
   protected readonly vista = computed(() => {
-    const apoioEstimado = this.srv.config().sensorInstalado ? 'Lido pelo sensor' : 'Estimado pelo último comando';
+    const apoioEstimado = this.srv.sensorConfiavel() ? 'Lido pelo sensor' : 'Estimado pelo último comando';
     switch (this.srv.fase()) {
       case 'abrindo':
         return { texto: 'Abrindo…', cor: COR.ambar, apoio: 'Toque para parar', botao: 'Parar', corBotao: COR.coral };

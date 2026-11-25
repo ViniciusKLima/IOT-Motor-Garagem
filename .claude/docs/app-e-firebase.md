@@ -22,7 +22,7 @@
 - `ts` do comando: o app grava `Date.now() + serverTimeOffset` (não depende do relógio do celular).
 
 ## Segurança dos comandos (importante)
-- Regras **publicadas a partir de** `firebase/database.rules.json` (trocar `UID_ESP32` pelo UID real nos 4 lugares). Publicar pelo console ou `firebase deploy --only database`.
+- Regras **publicadas a partir de** `firebase/database.rules.json` (trocar `UID_ESP32` pelo UID real em todos os lugares). Publicar pelo console ou `firebase deploy --only database`.
 - Só usuário com perfil em `/perfis` cria comando; `uid` e `nome` precisam ser os dele (não dá para falsificar o "quem"); `acao` só `"acionar"`; comando não pode ser editado depois de criado.
 - O **servidor recusa** `ts` com mais de 10 s (cobre o celular sem internet que envia o toque guardado minutos depois). O app também desabilita o botão quando `.info/connected` é falso.
 - O ESP32 **também ignora comandos antigos** (> ~10 s, via NTP; sem hora sincronizada, **recusa tudo**), executa cada comando **uma vez** (por id) com **cooldown de ~2 s**, e **apaga** o comando depois de executar.

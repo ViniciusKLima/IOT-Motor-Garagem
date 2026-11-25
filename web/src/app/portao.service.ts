@@ -101,6 +101,11 @@ export class PortaoService {
 
   private readonly cursoMs = computed(() => Math.max(1000, this.config().tempoCursoMs || CONFIG_PADRAO.tempoCursoMs));
 
+  /** Só confia no sensor se ele estiver instalado E o ESP32 estiver online (leitura recente). */
+  readonly sensorConfiavel = computed(
+    () => this.config().sensorInstalado && this.espOnline() && typeof this.estado()?.sensorFechado === 'boolean',
+  );
+
   /** Reproduz os pulsos executados (do mais antigo ao mais novo). */
   private readonly reproducao = computed(() => {
     const pulsos = this.historico()
@@ -117,9 +122,8 @@ export class PortaoService {
     const t = this.agoraServidor();
     let f = faseEm(this.reproducao().m, t, this.cursoMs());
     // Com o sensor reed instalado, ele manda quando o portão está parado.
-    const cfg = this.config();
     const sensor = this.estado()?.sensorFechado;
-    if (cfg.sensorInstalado && typeof sensor === 'boolean' && f !== 'abrindo' && f !== 'fechando') {
+    if (this.sensorConfiavel() && typeof sensor === 'boolean' && f !== 'abrindo' && f !== 'fechando') {
       if (sensor) f = 'fechado';
       else if (f === 'fechado') f = 'aberto';
     }
