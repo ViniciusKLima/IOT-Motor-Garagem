@@ -1,0 +1,13 @@
+# Dependências e builds
+node_modules/
+web/dist/
+web/.angular/
+
+# Credenciais do ESP32 (Wi-Fi, usuário do Firebase)
+firmware/**/secrets.h
+
+# Pacotes enviados para conversa
+*.zip
+
+# Dados reais do banco (UIDs, e-mails): nunca versionar
+users.json

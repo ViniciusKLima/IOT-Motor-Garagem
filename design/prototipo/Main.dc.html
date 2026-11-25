@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>App do portão</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button,select{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;background:#12161C;color:#E8ECF1;font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden">
+
+  <div style="padding:32px 24px 8px;display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:12px;font-weight:600;letter-spacing:.08em;color:#9AA6B2">MINHA CASA</div>
+      <h1 style="margin:2px 0 0;font-size:24px;font-weight:700;line-height:1.2">Portão da garagem</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;background:#1B212A;border-radius:999px;padding:8px 12px">
+      <span style="width:8px;height:8px;border-radius:50%;background:#5EE0A0"></span>
+      <span style="font-size:12px;font-weight:500;color:#E8ECF1">ESP32 online</span>
+    </div>
+  </div>
+
+  <sc-if value="{{ loginOn }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1;display:flex;flex-direction:column;gap:20px;padding:20px 24px 24px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:28px;font-weight:700;line-height:1.2">Entrar</div>
+      <div style="font-size:14px;color:#9AA6B2">Escolha quem você é e digite seu PIN.</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <label for="perfil" style="font-size:12px;font-weight:600;letter-spacing:.08em;color:#9AA6B2">PERFIL</label>
+      <select id="perfil" value="{{ pick }}" onChange="{{ pickUser }}" style="height:52px;border-radius:14px;border:1px solid #2A3340;background:#1B212A;color:#E8ECF1;font-size:16px;padding:0 16px">
+        <sc-for list="{{ options }}" as="o" hint-placeholder-count="4">
+          <option value="{{o.v}}">{{o.t}}</option>
+        </sc-for>
+      </select>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;align-items:center">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.08em;color:#9AA6B2">PIN</div>
+      <div style="display:flex;gap:14px;height:20px;align-items:center">
+        <sc-for list="{{ dots }}" as="d" hint-placeholder-count="6">
+          <span style="width:16px;height:16px;border-radius:50%;background:{{d.bg}}"></span>
+        </sc-for>
+      </div>
+      <div style="font-size:13px;color:#9AA6B2;min-height:18px">{{hint}}</div>
+    </div>
+
+    <div style="flex:1;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px;align-content:end">
+      <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+        <button onClick="{{ k.on }}" aria-label="{{k.aria}}" style="height:68px;border:0;border-radius:18px;background:#1B212A;color:#E8ECF1;font-size:26px;font-weight:600;visibility:{{k.vis}}">{{k.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ appOn }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:0 24px;display:flex;align-items:center;gap:8px;font-size:13px;color:#9AA6B2">
+      <span>Entrou como <strong style="color:#E8ECF1;font-weight:600">{{userName}}</strong></span>
+      <span>·</span>
+      <button onClick="{{ logout }}" style="border:0;background:transparent;color:#7AB8FF;font-size:13px;font-weight:600;padding:8px 0">Sair</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ homeOn }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;display:flex;flex-direction:column;gap:20px;padding:8px 24px 0">
+
+    <div style="background:#1B212A;border-radius:20px;padding:20px 20px 16px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="font-size:12px;font-weight:600;letter-spacing:.08em;color:#9AA6B2">ESTADO</div>
+        <div style="font-size:32px;font-weight:700;line-height:1.15;color:{{statusColor}}">{{statusText}}</div>
+        <div style="font-size:13px;color:#9AA6B2">{{statusSub}}</div>
+      </div>
+      <div style="position:relative;height:84px;border-radius:12px;background:#12161C;overflow:hidden">
+        <div style="position:absolute;left:0;right:0;bottom:10px;height:3px;background:#2A3340"></div>
+        <div style="position:absolute;top:12px;left:0;width:300px;height:56px;border-radius:6px;background:repeating-linear-gradient(90deg,#3A4656 0,#3A4656 6px,#232B36 6px,#232B36 20px);transform:{{gateTransform}};transition:{{gateTransition}}"></div>
+        <div style="position:absolute;top:0;left:0;width:36px;height:84px;background:#232B36;display:flex;align-items:center;justify-content:center">
+          <span style="font-size:10px;font-weight:600;color:#9AA6B2;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.08em">MOTOR</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;display:flex;align-items:center;justify-content:center">
+      <button onClick="{{ press }}" style="width:168px;height:168px;border-radius:50%;border:0;background:{{btnBg}};color:#0B1014;font-size:18px;font-weight:700;line-height:1.2;padding:0 24px;box-shadow:0 0 0 10px #1B212A">{{btnLabel}}</button>
+    </div>
+
+    <div style="background:#1B212A;border-radius:16px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFC24D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+      <div style="font-size:13px;line-height:1.45;color:#C3CCD6">Sensor de fechamento ainda não instalado. O estado mostrado é estimado pelo último comando enviado.</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ logOn }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;display:flex;flex-direction:column;gap:12px;padding:16px 24px 0;overflow:hidden">
+    <div style="font-size:12px;font-weight:600;letter-spacing:.08em;color:#9AA6B2">QUEM ACIONOU O PORTÃO</div>
+    <sc-if value="{{ logEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#1B212A;border-radius:16px;padding:20px;font-size:14px;line-height:1.5;color:#C3CCD6">Nenhum comando ainda. Volte à aba Portão e toque no botão.</div>
+    </sc-if>
+    <sc-for list="{{ log }}" as="item" hint-placeholder-count="3">
+      <div style="background:#1B212A;border-radius:16px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-size:15px;font-weight:600">{{item.text}}</span>
+          <span style="font-size:13px;color:#9AA6B2">por {{item.who}}</span>
+        </div>
+        <span style="font-size:13px;color:#9AA6B2">{{item.time}}</span>
+      </div>
+    </sc-for>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ appOn }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;background:#1B212A;border-top:1px solid #2A3340;padding:8px 12px 20px;gap:8px">
+    <button onClick="{{ goHome }}" aria-label="Portão" style="flex:1;min-height:52px;border:0;border-radius:14px;background:{{homeTabBg}};color:{{homeTabColor}};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V8l9-5 9 5v12M7 20v-7h10v7M7 16.5h10"/></svg>
+      Portão
+    </button>
+    <button onClick="{{ goLog }}" aria-label="Histórico" style="flex:1;min-height:52px;border:0;border-radius:14px;background:{{logTabBg}};color:{{logTabColor}};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+      Histórico
+    </button>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  state = { gate: 'closed', target: 'open', tab: 'home', log: [], user: '', pick: '', pin: '', hint: '' };
+  _t = null;
+
+  profiles = [
+    { v: '', t: 'Escolher perfil' },
+    { v: 'vinicius', t: 'Vinícius' },
+    { v: 'pai', t: 'Pai' },
+    { v: 'mae', t: 'Mãe' },
+    { v: 'visitante', t: 'Visitante' }
+  ];
+
+  addLog(text) {
+    const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return [{ text, time, who: this.state.user }].concat(this.state.log).slice(0, 12);
+  }
+
+  pickUser = (e) => this.setState({ pick: e.target.value, hint: '' });
+
+  tapKey(key) {
+    const s = this.state;
+    if (key === 'back') { this.setState({ pin: s.pin.slice(0, -1), hint: '' }); return; }
+    if (!s.pick) { this.setState({ hint: 'Escolha o perfil primeiro' }); return; }
+    if (s.pin.length >= 6) return;
+    const pin = s.pin + key;
+    this.setState({ pin, hint: '' });
+    if (pin.length === 6) {
+      setTimeout(() => {
+        const p = this.profiles.find((x) => x.v === this.state.pick);
+        this.setState({ user: p ? p.t : '', pin: '', tab: 'home' });
+      }, 250);
+    }
+  }
+
+  logout = () => {
+    clearTimeout(this._t);
+    this.setState({ user: '', pick: '', pin: '', hint: '', gate: 'closed', target: 'open', tab: 'home' });
+  };
+
+  press = () => {
+    const s = this.state;
+    clearTimeout(this._t);
+    if (s.gate === 'moving') {
+      this.setState({ gate: 'stopped', log: this.addLog('Parado no meio') });
+      return;
+    }
+    let target = 'open';
+    if (s.gate === 'open') target = 'closed';
+    if (s.gate === 'stopped') target = s.target === 'open' ? 'closed' : 'open';
+    this.setState({ gate: 'moving', target, log: this.addLog(target === 'open' ? 'Comando: abrir' : 'Comando: fechar') });
+    this._t = setTimeout(() => {
+      this.setState({ gate: target, log: this.addLog(target === 'open' ? 'Portão aberto' : 'Portão fechado') });
+    }, 6000);
+  };
+
+  goHome = () => this.setState({ tab: 'home' });
+  goLog = () => this.setState({ tab: 'log' });
+
+  renderVals() {
+    const s = this.state;
+    const opening = s.target === 'open';
+    let statusText = 'Fechado', statusColor = '#5EE0A0', statusSub = 'Estimado pelo último comando';
+    let btnLabel = 'Abrir portão', btnBg = '#7AB8FF';
+    let gateTransform = 'translateX(0px)', gateTransition = 'transform 6s linear';
+    if (s.gate === 'open') {
+      statusText = 'Aberto'; statusColor = '#7AB8FF';
+      btnLabel = 'Fechar portão';
+      gateTransform = 'translateX(-250px)';
+    } else if (s.gate === 'moving') {
+      statusText = opening ? 'Abrindo…' : 'Fechando…'; statusColor = '#FFC24D'; statusSub = 'Toque para parar';
+      btnLabel = 'Parar'; btnBg = '#FF8A7A';
+      gateTransform = opening ? 'translateX(-250px)' : 'translateX(0px)';
+    } else if (s.gate === 'stopped') {
+      statusText = 'Parado no meio'; statusColor = '#FF8A7A'; statusSub = 'O portão não chegou ao fim';
+      btnLabel = opening ? 'Fechar portão' : 'Abrir portão';
+      gateTransform = 'translateX(-125px)'; gateTransition = 'transform 0.4s ease-out';
+    }
+    const keyDefs = [
+      ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'],
+      ['7', '7'], ['8', '8'], ['9', '9'], ['blank', ''], ['0', '0'], ['back', '←']
+    ];
+    const keys = keyDefs.map((d) => ({
+      label: d[1],
+      aria: d[0] === 'back' ? 'Apagar' : (d[0] === 'blank' ? '' : 'Dígito ' + d[0]),
+      vis: d[0] === 'blank' ? 'hidden' : 'visible',
+      on: () => this.tapKey(d[0])
+    }));
+    const dots = [0, 1, 2, 3, 4, 5].map((i) => ({ bg: i < s.pin.length ? '#7AB8FF' : '#2A3340' }));
+    const loggedIn = !!s.user;
+    return {
+      loginOn: !loggedIn, appOn: loggedIn,
+      homeOn: loggedIn && s.tab === 'home', logOn: loggedIn && s.tab === 'log',
+      options: this.profiles, pick: s.pick, pickUser: this.pickUser,
+      keys, dots, hint: s.hint || 'PIN de 6 dígitos',
+      userName: s.user, logout: this.logout,
+      logEmpty: s.log.length === 0, log: s.log,
+      statusText, statusColor, statusSub, btnLabel, btnBg, gateTransform, gateTransition,
+      press: this.press, goHome: this.goHome, goLog: this.goLog,
+      homeTabBg: s.tab === 'home' ? '#2A3340' : 'transparent', homeTabColor: s.tab === 'home' ? '#E8ECF1' : '#9AA6B2',
+      logTabBg: s.tab === 'log' ? '#2A3340' : 'transparent', logTabColor: s.tab === 'log' ? '#E8ECF1' : '#9AA6B2'
+    };
+  }
+}
+</script>
+</body>
+</html>
