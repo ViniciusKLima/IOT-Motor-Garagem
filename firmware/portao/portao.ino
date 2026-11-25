@@ -9,14 +9,20 @@
   - Dá um PULSO de 500 ms no relé (GPIO 26) = apertar a botoeira (BOT)
     da central Rossi. A central alterna abrir / parar / fechar.
   - Grava o resultado em /historico e apaga o comando.
-  - Publica /estado (visto, rssi) a cada 5 s: é o "ESP32 online" do site.
+  - Publica /estado a cada 5 s: é o "ESP32 online" do site, com dados
+    técnicos (sinal, tempo ligado, motivo do reinício, quedas de Wi-Fi...).
+  - LOG TÉCNICO em /logs (últimos 200 eventos): ligou, reiniciou e por quê,
+    Wi-Fi caiu/voltou, erros do Firebase, comandos recebidos/recusados,
+    pulsos. Sem internet, guarda na memória e envia quando voltar.
+    O site mostra em: toque no chip "ESP32 online" → Diagnóstico.
   - Atualização pelo Wi-Fi (OTA) com senha.
 
-  Placa: "ESP32 Dev Module". Serial Monitor: 115200.
+  Placa: "ESP32 Dev Module", Partition Scheme "Minimal SPIFFS (1.9MB APP
+  with OTA)". Serial Monitor: 115200.
   Bibliotecas: "Firebase Arduino Client Library for ESP8266 and ESP32"
   (Mobizt, 4.4.x) e "ArduinoJson" (7.x).
 
-  TESTE SEM FIREBASE: no Serial Monitor, digite  p  + Enter para dar
+  TESTE PELO CABO: no Serial Monitor, digite  p  + Enter para dar
   um pulso no relé, e  s  + Enter para ver o estado.
 
   Contrato com o site: .claude/docs/app-e-firebase.md
@@ -26,13 +32,17 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h"
 #include <time.h>
 #include <sys/time.h>
+#include <stdarg.h>
 #include <esp_system.h>
 
 #include "secrets.h"  // WIFI_SSID, WIFI_PASSWORD, API_KEY, DATABASE_URL, ESP_EMAIL, ESP_PASSWORD, OTA_PASSWORD
+
+const char* FW_VERSAO = "1.1.0";
 
 // ======================================================
 // CONFIGURAÇÃO (confira com o seu hardware)
@@ -41,33 +51,39 @@
 // Relé que fecha BOT com GND na central
 const int RELE_PIN = 26;
 
-// Nível que LIGA o relé. A maioria dos módulos com optoacoplador é
-// ativo-BAIXO (LOW liga). Se o relé ficar ligado direto ao energizar,
-// troque para HIGH. TESTE: tire e volte a energia; o portão NÃO pode mexer.
+// Nível que LIGA o relé (testado: ativo-BAIXO).
+// TESTE: tire e volte a energia; o portão NÃO pode mexer.
 const int RELE_LIGA = LOW;
 const int RELE_DESLIGA = (RELE_LIGA == LOW) ? HIGH : LOW;
 
-const unsigned long PULSO_MS = 500;        // como apertar o botão
+const unsigned long PULSO_MS = 500;          // como apertar o botão
 const unsigned long INTERVALO_MIN_MS = 2000; // entre dois pulsos
-const long long IDADE_MAX_MS = 10000;      // comando mais velho que isso é recusado
-const long long FUTURO_MAX_MS = 5000;      // tolerância de relógio para o futuro
+const long long IDADE_MAX_MS = 10000;        // comando mais velho que isso é recusado
+const long long FUTURO_MAX_MS = 5000;        // tolerância de relógio para o futuro
 
 // Sensor reed (FUTURO). Deixe -1 enquanto não estiver instalado.
 // Ligação: reed entre o pino e o GND (usa INPUT_PULLUP, sem resistor).
 // Ex.: const int SENSOR_PIN = 27;
 const int SENSOR_PIN = -1;
+// Com sensor: se o portão estava fechado e continuar fechado tanto tempo
+// depois do pulso, registra "pulso dado mas o portão não saiu do lugar".
+const unsigned long SENSOR_CONFIRMA_MS = 5000;
 
-// LED da placa (status)
+// LED da placa: desligado (pedido do Vinícius). Mude para true se quiser
+// o LED mostrando o estado (rápido = sem Wi-Fi; 1 s = conectando; curto a cada 2 s = ok).
+const bool LED_STATUS = false;
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
 #endif
 const int LED_PIN = LED_BUILTIN;
 
 // Tempos
-const unsigned long ESTADO_INTERVALO_MS = 5000;   // "estou vivo" no banco
+const unsigned long ESTADO_INTERVALO_MS = 5000;    // "estou vivo" no banco
 const unsigned long CHECAGEM_INTERVALO_MS = 30000; // relê /comandos mesmo sem aviso do stream
-const unsigned long WIFI_RETRY_MS = 20000;        // força nova tentativa de Wi-Fi
+const unsigned long WIFI_RETRY_MS = 20000;         // força nova tentativa de Wi-Fi
 const unsigned long SEM_FIREBASE_REINICIA_MS = 10UL * 60UL * 1000UL; // 10 min sem sucesso = reinicia
+const unsigned long LOG_REPETIDO_MS = 5UL * 60UL * 1000UL;  // não repetir o mesmo aviso antes disso
+const int SINAL_FRACO_DBM = -80;
 
 // ======================================================
 // ESTADO
@@ -77,18 +93,42 @@ FirebaseData fbdo;    // leituras e escritas
 FirebaseData stream;  // escuta /comandos
 FirebaseAuth auth;
 FirebaseConfig config;
+Preferences prefs;    // memória que sobrevive ao reinício (contador do log, motivo do reinício)
 
 bool firebaseIniciado = false;
+bool firebaseConectouUmaVez = false;
 bool streamIniciado = false;
 bool precisaChecar = true;
 bool ntpIniciado = false;
+bool horaLogada = false;
+bool lacunaVerificada = false;  // já conferiu quanto tempo ficou sem sinal antes de ligar
 
 unsigned long ultimoPulso = 0;
 bool jaPulsou = false;
+long long ultimoPulsoEpochMs = 0;
+int pulsos = 0;
 unsigned long ultimoEstado = 0;
 unsigned long ultimaChecagem = 0;
 unsigned long ultimaTentativaWifi = 0;
 unsigned long ultimoSucessoFirebase = 0;
+
+// Wi-Fi (as flags vêm do evento, que roda em outra tarefa; o log é feito no loop)
+volatile bool evWifiConectou = false;
+volatile bool evWifiCaiu = false;
+volatile int evWifiMotivo = 0;
+bool wifiConectadoAntes = false;
+unsigned long wifiForaDesde = 0;
+unsigned long wifiForaTotalMs = 0;
+int wifiQuedas = 0;
+int wifiUltimoMotivo = 0;
+unsigned long ultimoAvisoSemWifi = 0;
+unsigned long ultimoAvisoSinalFraco = 0;
+
+// Erros do Firebase (contados; o log é resumido para não lotar)
+int errosFirebase = 0;
+int errosDesdeUltimoLog = 0;
+unsigned long ultimoLogErroFirebase = 0;
+unsigned long ultimoLogStream = 0;
 
 // ids já processados (evita executar duas vezes se o apagar falhar)
 const int IDS_MAX = 16;
@@ -101,26 +141,7 @@ bool sensorLido = false;
 bool sensorBruto = false;
 unsigned long sensorMudouEm = 0;
 bool sensorMudou = false;
-
-// ======================================================
-// RELÉ
-// ======================================================
-
-void releDesligadoSeguro() {
-  // Define o nível ANTES de virar saída: o relé não dá pulso ao ligar.
-  digitalWrite(RELE_PIN, RELE_DESLIGA);
-  pinMode(RELE_PIN, OUTPUT);
-  digitalWrite(RELE_PIN, RELE_DESLIGA);
-}
-
-void darPulso() {
-  Serial.println(">>> PULSO no relé (BOT)");
-  digitalWrite(RELE_PIN, RELE_LIGA);
-  delay(PULSO_MS);
-  digitalWrite(RELE_PIN, RELE_DESLIGA);
-  ultimoPulso = millis();
-  jaPulsou = true;
-}
+bool conferirSensorAposPulso = false;
 
 // ======================================================
 // HORA (NTP)
@@ -136,14 +157,142 @@ long long agoraMs() {
   return (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
+String duracao(unsigned long ms) {
+  unsigned long s = ms / 1000;
+  char b[32];
+  if (s < 60) snprintf(b, sizeof(b), "%lus", s);
+  else if (s < 3600) snprintf(b, sizeof(b), "%lumin %lus", s / 60, s % 60);
+  else if (s < 86400) snprintf(b, sizeof(b), "%luh %lumin", s / 3600, (s / 60) % 60);
+  else snprintf(b, sizeof(b), "%lud %luh", s / 86400, (s / 3600) % 24);
+  return String(b);
+}
+
 // ======================================================
-// LED DE STATUS
-//   pisca rápido        = sem Wi-Fi
-//   pisca a cada 1 s    = Wi-Fi ok, esperando hora/Firebase
-//   piscada curta a 2 s = tudo funcionando
+// LOG TÉCNICO
+// Cada evento vai para o Serial e para uma fila na memória (40 eventos).
+// Quando há Firebase, a fila é enviada para /logs/{0..199} (anel: o 201º
+// sobrescreve o 1º). Campos: n (sequência), ts (hora), nivel, msg, up.
+// ======================================================
+
+enum NivelLog { INFO, AVISO, ERRO };
+
+const char* nomeNivel(int n) {
+  return n == ERRO ? "erro" : (n == AVISO ? "aviso" : "info");
+}
+
+struct Evento {
+  unsigned long ms;
+  long long epochMs;  // 0 = ainda sem hora certa (calculada no envio)
+  uint8_t nivel;
+  char msg[120];
+};
+
+const int EVENTOS_MAX = 40;
+const uint32_t LOGS_SLOTS = 200;
+Evento eventos[EVENTOS_MAX];
+int evIni = 0;
+int evQtd = 0;
+int eventosPerdidos = 0;
+uint32_t logSeq = 0;
+
+void logar(int nivel, const char* fmt, ...) {
+  char msg[120];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, sizeof(msg), fmt, args);
+  va_end(args);
+  Serial.printf("[%s] %s\n", nomeNivel(nivel), msg);
+
+  if (evQtd == EVENTOS_MAX) {  // fila cheia: descarta o mais antigo
+    evIni = (evIni + 1) % EVENTOS_MAX;
+    evQtd--;
+    eventosPerdidos++;
+  }
+  Evento& e = eventos[(evIni + evQtd) % EVENTOS_MAX];
+  e.ms = millis();
+  e.epochMs = horaValida() ? agoraMs() : 0;
+  e.nivel = nivel;
+  strlcpy(e.msg, msg, sizeof(e.msg));
+  evQtd++;
+}
+
+void enviarLogs() {
+  if (eventosPerdidos > 0) {
+    int p = eventosPerdidos;
+    eventosPerdidos = 0;
+    logar(AVISO, "%d eventos antigos do log foram descartados (muito tempo sem internet)", p);
+  }
+  int enviados = 0;
+  while (evQtd > 0 && enviados < 4) {  // no máximo 4 por volta, para não travar o loop
+    Evento& e = eventos[evIni];
+    long long ts = e.epochMs ? e.epochMs : agoraMs() - (long long)(millis() - e.ms);
+
+    JsonDocument d;
+    d["n"] = logSeq;
+    d["ts"] = ts;
+    d["nivel"] = nomeNivel(e.nivel);
+    d["msg"] = e.msg;
+    d["up"] = e.ms / 1000;
+    String s;
+    serializeJson(d, s);
+    FirebaseJson j;
+    j.setJsonData(s);
+
+    String caminho = "/logs/" + String(logSeq % LOGS_SLOTS);
+    if (!Firebase.RTDB.setJSON(&fbdo, caminho.c_str(), &j)) {
+      Serial.printf("[log] nao enviou: %s\n", fbdo.errorReason().c_str());
+      return;  // tenta de novo na próxima volta
+    }
+    logSeq++;
+    prefs.putUInt("logSeq", logSeq);
+    evIni = (evIni + 1) % EVENTOS_MAX;
+    evQtd--;
+    enviados++;
+  }
+}
+
+void erroFirebase(const char* onde, const String& motivo) {
+  errosFirebase++;
+  errosDesdeUltimoLog++;
+  Serial.printf("[firebase] erro em %s: %s\n", onde, motivo.c_str());
+  if (ultimoLogErroFirebase == 0 || millis() - ultimoLogErroFirebase > LOG_REPETIDO_MS) {
+    logar(ERRO, "Falha no Firebase (%s): %s [%d erro(s) desde o ultimo aviso]", onde, motivo.c_str(),
+          errosDesdeUltimoLog);
+    errosDesdeUltimoLog = 0;
+    ultimoLogErroFirebase = millis();
+  }
+}
+
+// ======================================================
+// RELÉ
+// ======================================================
+
+void releDesligadoSeguro() {
+  // Define o nível ANTES de virar saída: o relé não dá pulso ao ligar.
+  digitalWrite(RELE_PIN, RELE_DESLIGA);
+  pinMode(RELE_PIN, OUTPUT);
+  digitalWrite(RELE_PIN, RELE_DESLIGA);
+}
+
+void darPulso() {
+  Serial.println(">>> PULSO no rele (BOT)");
+  digitalWrite(RELE_PIN, RELE_LIGA);
+  delay(PULSO_MS);
+  digitalWrite(RELE_PIN, RELE_DESLIGA);
+  ultimoPulso = millis();
+  ultimoPulsoEpochMs = horaValida() ? agoraMs() : 0;
+  jaPulsou = true;
+  pulsos++;
+  // Com sensor: se estava fechado, confere se saiu do lugar
+  conferirSensorAposPulso = (SENSOR_PIN >= 0 && sensorLido && sensorFechado);
+}
+
+// ======================================================
+// LED (opcional)
 // ======================================================
 
 void atualizarLed() {
+  if (!LED_STATUS) return;
   unsigned long t = millis();
   bool acende;
   if (WiFi.status() != WL_CONNECTED) acende = ((t / 150) % 2) == 0;
@@ -162,19 +311,20 @@ const char* motivoWifi(int r) {
     case 8:   return "conexao encerrada";
     case 15:  return "falha no handshake (senha errada ou sinal fraco)";
     case 200: return "perdeu o sinal do roteador";
-    case 201: return "rede NAO encontrada (nome errado, longe ou so 5 GHz)";
+    case 201: return "rede nao encontrada (roteador desligado, longe ou nome errado)";
     case 202: return "autenticacao falhou (senha incorreta?)";
     case 204: return "handshake expirou";
     default:  return "outro motivo";
   }
 }
 
+// Roda em outra tarefa: só marca flags; o log é feito no loop.
 void eventoWifi(WiFiEvent_t evento, WiFiEventInfo_t info) {
   if (evento == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-    Serial.printf("[wifi] conectado, IP %s, sinal %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    evWifiConectou = true;
   } else if (evento == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-    int r = info.wifi_sta_disconnected.reason;
-    Serial.printf("[wifi] caiu. Motivo %d: %s\n", r, motivoWifi(r));
+    evWifiMotivo = info.wifi_sta_disconnected.reason;
+    evWifiCaiu = true;
   }
 }
 
@@ -187,17 +337,62 @@ void iniciarWifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   WiFi.setSleep(false);  // resposta mais rápida e conexão mais estável
   ultimaTentativaWifi = millis();
+  wifiForaDesde = millis();
   Serial.printf("[wifi] conectando em \"%s\"...\n", WIFI_SSID);
 }
 
 void cuidarWifi() {
+  // --- eventos vindos da outra tarefa ---
+  if (evWifiCaiu) {
+    evWifiCaiu = false;
+    wifiUltimoMotivo = evWifiMotivo;
+    if (wifiConectadoAntes) {
+      wifiConectadoAntes = false;
+      wifiQuedas++;
+      wifiForaDesde = millis();
+      ultimoAvisoSemWifi = millis();
+      logar(AVISO, "Wi-Fi caiu (queda %d desde que ligou): %s", wifiQuedas, motivoWifi(wifiUltimoMotivo));
+    }
+  }
+  if (evWifiConectou) {
+    evWifiConectou = false;
+    if (!wifiConectadoAntes) {
+      wifiConectadoAntes = true;
+      unsigned long fora = millis() - wifiForaDesde;
+      if (wifiQuedas == 0) {
+        logar(INFO, "Wi-Fi conectado em %s (sinal %d dBm, canal %d, IP %s)", duracao(fora).c_str(), WiFi.RSSI(),
+              WiFi.channel(), WiFi.localIP().toString().c_str());
+      } else {
+        wifiForaTotalMs += fora;
+        logar(INFO, "Wi-Fi voltou depois de %s fora (sinal %d dBm)", duracao(fora).c_str(), WiFi.RSSI());
+      }
+    }
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
     if (!ntpIniciado) {
       configTime(0, 0, "pool.ntp.org", "time.google.com");
       ntpIniciado = true;
       Serial.println("[hora] sincronizando (NTP)...");
     }
+    if (!horaLogada && horaValida()) {
+      horaLogada = true;
+      logar(INFO, "Hora sincronizada pela internet");
+    }
+    // sinal fraco (aviso no máximo a cada 30 min)
+    int rssi = WiFi.RSSI();
+    if (rssi < SINAL_FRACO_DBM && (ultimoAvisoSinalFraco == 0 || millis() - ultimoAvisoSinalFraco > 6 * LOG_REPETIDO_MS)) {
+      ultimoAvisoSinalFraco = millis();
+      logar(AVISO, "Sinal Wi-Fi fraco: %d dBm (abaixo de %d pode cair)", rssi, SINAL_FRACO_DBM);
+    }
     return;
+  }
+
+  // --- sem Wi-Fi ---
+  if (millis() - ultimoAvisoSemWifi > LOG_REPETIDO_MS) {
+    ultimoAvisoSemWifi = millis();
+    logar(AVISO, "Ainda sem Wi-Fi ha %s (ultimo motivo: %s)", duracao(millis() - wifiForaDesde).c_str(),
+          motivoWifi(wifiUltimoMotivo));
   }
   if (millis() - ultimaTentativaWifi >= WIFI_RETRY_MS) {
     ultimaTentativaWifi = millis();
@@ -221,6 +416,7 @@ void cuidarOta() {
     ArduinoOTA.setPassword(OTA_PASSWORD);
     ArduinoOTA.onStart([]() {
       digitalWrite(RELE_PIN, RELE_DESLIGA);
+      prefs.putString("motivoRest", "atualizacao do codigo pelo Wi-Fi (OTA)");
       Serial.println("[ota] recebendo codigo novo...");
     });
     ArduinoOTA.onError([](ota_error_t e) { Serial.printf("[ota] erro %u\n", e); });
@@ -246,7 +442,14 @@ void cuidarSensor() {
     sensorFechado = sensorBruto;
     sensorLido = true;
     sensorMudou = true;
-    Serial.printf("[sensor] portao %s\n", sensorFechado ? "FECHADO" : "NAO fechado");
+    logar(INFO, "Sensor: portao %s", sensorFechado ? "FECHADO" : "saiu da posicao fechado");
+  }
+  if (conferirSensorAposPulso && millis() - ultimoPulso > SENSOR_CONFIRMA_MS) {
+    conferirSensorAposPulso = false;
+    if (sensorFechado) {
+      logar(ERRO, "Pulso dado, mas o portao continuou fechado apos %lus: confira fios BOT/GND, rele e central",
+            SENSOR_CONFIRMA_MS / 1000);
+    }
   }
 }
 
@@ -295,14 +498,13 @@ bool gravarHistorico(const String& nome, const char* resultado, const String& co
   j.set("resultado", resultado);
   j.set("comandoId", comandoId);
   if (Firebase.RTDB.pushJSON(&fbdo, "/historico", &j)) return true;
-  Serial.printf("[historico] erro: %s\n", fbdo.errorReason().c_str());
+  erroFirebase("gravar historico", fbdo.errorReason());
   return false;
 }
 
 void apagarComando(const String& id) {
   String caminho = "/comandos/" + id;
-  if (!Firebase.RTDB.deleteNode(&fbdo, caminho.c_str()))
-    Serial.printf("[comando] erro ao apagar %s: %s\n", id.c_str(), fbdo.errorReason().c_str());
+  if (!Firebase.RTDB.deleteNode(&fbdo, caminho.c_str())) erroFirebase("apagar comando", fbdo.errorReason());
 }
 
 void processarComando(const String& id, const String& nome, const String& acao, long long ts) {
@@ -321,9 +523,12 @@ void processarComando(const String& id, const String& nome, const String& acao, 
   else if (idade < -FUTURO_MAX_MS) resultado = "relogio adiantado";
   else if (jaPulsou && millis() - ultimoPulso < INTERVALO_MIN_MS) resultado = "toque repetido";
 
-  Serial.printf("[comando] %s de %s (idade %lld ms): %s\n", id.c_str(), nome.c_str(), idade, resultado);
-
-  if (strcmp(resultado, "ok") == 0) darPulso();
+  if (strcmp(resultado, "ok") == 0) {
+    darPulso();
+    logar(INFO, "Comando de %s: PULSO dado no rele (chegou %lld ms depois do toque)", nome.c_str(), idade);
+  } else {
+    logar(AVISO, "Comando de %s recusado: %s (idade %lld ms)", nome.c_str(), resultado, idade);
+  }
   gravarHistorico(nome, resultado, id);
   apagarComando(id);
 }
@@ -333,7 +538,7 @@ bool checarComandos() {
     String erro = fbdo.errorReason();
     // /comandos vazio (ninguém tocou no botão): não é erro
     if (fbdo.httpCode() == 404 || erro.indexOf("not found") >= 0 || erro.indexOf("path not exist") >= 0) return true;
-    Serial.printf("[comandos] erro ao ler: %s\n", erro.c_str());
+    erroFirebase("ler comandos", erro);
     return false;
   }
 
@@ -342,7 +547,7 @@ bool checarComandos() {
 
   JsonDocument doc;
   if (deserializeJson(doc, payload)) {
-    Serial.println("[comandos] JSON invalido");
+    logar(ERRO, "Comando com JSON invalido no banco (ignorado)");
     return true;
   }
 
@@ -358,16 +563,43 @@ bool checarComandos() {
   return true;
 }
 
+const char* motivoReinicio();
+
 bool publicarEstado() {
+  JsonDocument d;
+  d["visto"][".sv"] = "timestamp";
+  d["rssi"] = WiFi.RSSI();
+  d["ip"] = WiFi.localIP().toString();
+  d["fw"] = FW_VERSAO;
+  d["uptimeS"] = millis() / 1000;
+  d["reinicio"] = motivoReinicio();
+  d["quedasWifi"] = wifiQuedas;
+  d["foraWifiS"] = wifiForaTotalMs / 1000;
+  d["pulsos"] = pulsos;
+  if (ultimoPulsoEpochMs) d["ultimoPulsoTs"] = ultimoPulsoEpochMs;
+  d["errosFirebase"] = errosFirebase;
+  d["heap"] = ESP.getFreeHeap();
+  if (SENSOR_PIN >= 0 && sensorLido) d["sensorFechado"] = sensorFechado;
+  String s;
+  serializeJson(d, s);
   FirebaseJson j;
-  j.set("visto/.sv", "timestamp");
-  j.set("rssi", WiFi.RSSI());
-  j.set("ip", WiFi.localIP().toString());
-  if (jaPulsou) j.set("ultimoPulsoHaS", (int)((millis() - ultimoPulso) / 1000));
-  if (SENSOR_PIN >= 0 && sensorLido) j.set("sensorFechado", sensorFechado);
+  j.setJsonData(s);
   if (Firebase.RTDB.updateNode(&fbdo, "/estado", &j)) return true;
-  Serial.printf("[estado] erro: %s\n", fbdo.errorReason().c_str());
+  erroFirebase("publicar estado", fbdo.errorReason());
   return false;
+}
+
+// Na primeira conexão depois de ligar: quanto tempo ficou sem dar sinal?
+void verificarLacuna() {
+  lacunaVerificada = true;
+  if (!Firebase.RTDB.get(&fbdo, "/estado/visto")) return;  // primeira vez na vida: nada a comparar
+  long long visto = atoll(fbdo.payload().c_str());
+  if (visto <= 0 || !horaValida()) return;
+  long long lacuna = agoraMs() - visto;
+  if (lacuna > 60000) {
+    logar(AVISO, "Ficou %s sem dar sinal antes de ligar (sem energia, sem internet ou reiniciando)",
+          duracao((unsigned long)(lacuna > 4000000000LL ? 4000000000LL : lacuna)).c_str());
+  }
 }
 
 void cuidarFirebase() {
@@ -379,6 +611,10 @@ void cuidarFirebase() {
   // Muito tempo sem conseguir falar com o Firebase: reinicia do zero.
   // (seguro: ao ligar, o relé fica desligado e comandos velhos são recusados)
   if (millis() - ultimoSucessoFirebase > SEM_FIREBASE_REINICIA_MS) {
+    char m[100];
+    snprintf(m, sizeof(m), "10 min sem conseguir falar com o Firebase (Wi-Fi %s)",
+             WiFi.status() == WL_CONNECTED ? "conectado" : "desconectado");
+    prefs.putString("motivoRest", m);
     Serial.println("[firebase] 10 min sem sucesso, reiniciando o ESP32...");
     delay(200);
     ESP.restart();
@@ -386,22 +622,28 @@ void cuidarFirebase() {
 
   if (!Firebase.ready()) return;
 
+  if (!firebaseConectouUmaVez) {
+    firebaseConectouUmaVez = true;
+    logar(INFO, "Conectado ao Firebase (login do ESP32 ok)");
+  }
+  if (!lacunaVerificada) verificarLacuna();
+
   if (!streamIniciado) {
     if (Firebase.RTDB.beginStream(&stream, "/comandos")) {
       streamIniciado = true;
       precisaChecar = true;
-      Serial.println("[firebase] escutando /comandos");
+      logar(INFO, "Escutando comandos do site");
     } else {
-      Serial.printf("[firebase] erro no stream: %s\n", stream.errorReason().c_str());
+      erroFirebase("iniciar escuta de comandos", stream.errorReason());
       return;
     }
   }
 
   if (!Firebase.RTDB.readStream(&stream)) {
-    Serial.printf("[firebase] stream caiu: %s\n", stream.errorReason().c_str());
-  }
-  if (stream.streamTimeout()) {
-    Serial.println("[firebase] stream sem resposta, reconectando...");
+    if (ultimoLogStream == 0 || millis() - ultimoLogStream > LOG_REPETIDO_MS) {
+      ultimoLogStream = millis();
+      logar(AVISO, "Escuta de comandos caiu: %s (reconectando sozinho)", stream.errorReason().c_str());
+    }
   }
   if (stream.streamAvailable()) precisaChecar = true;
 
@@ -416,6 +658,8 @@ void cuidarFirebase() {
     ultimoEstado = millis();
     if (publicarEstado()) ultimoSucessoFirebase = millis();
   }
+
+  enviarLogs();
 }
 
 // ======================================================
@@ -426,13 +670,14 @@ void cuidarSerial() {
   if (!Serial.available()) return;
   char c = Serial.read();
   if (c == 'p' || c == 'P') {
-    Serial.println("[teste] pulso pedido pelo Serial");
     darPulso();
+    logar(INFO, "Pulso de teste pelo cabo USB (Serial)");
   } else if (c == 's' || c == 'S') {
-    Serial.printf("[status] wifi=%s rssi=%d hora=%s firebase=%s stream=%s heap=%u\n",
-                  WiFi.status() == WL_CONNECTED ? "ok" : "NAO", WiFi.RSSI(),
-                  horaValida() ? "ok" : "NAO", firebaseIniciado && Firebase.ready() ? "ok" : "NAO",
-                  streamIniciado ? "ok" : "NAO", ESP.getFreeHeap());
+    Serial.printf("[status] fw=%s wifi=%s rssi=%d hora=%s firebase=%s stream=%s quedas=%d pulsos=%d "
+                  "erros=%d logs_na_fila=%d heap=%u ligado_ha=%s\n",
+                  FW_VERSAO, WiFi.status() == WL_CONNECTED ? "ok" : "NAO", WiFi.RSSI(), horaValida() ? "ok" : "NAO",
+                  firebaseIniciado && Firebase.ready() ? "ok" : "NAO", streamIniciado ? "ok" : "NAO", wifiQuedas,
+                  pulsos, errosFirebase, evQtd, ESP.getFreeHeap(), duracao(millis()).c_str());
   }
 }
 
@@ -442,13 +687,14 @@ void cuidarSerial() {
 
 const char* motivoReinicio() {
   switch (esp_reset_reason()) {
-    case ESP_RST_POWERON:  return "ligou na energia";
+    case ESP_RST_POWERON:  return "ligou na energia (faltou luz ou foi religado)";
     case ESP_RST_SW:       return "reiniciou por software";
-    case ESP_RST_PANIC:    return "ERRO no codigo";
+    case ESP_RST_PANIC:    return "TRAVOU (erro no codigo)";
     case ESP_RST_INT_WDT:
     case ESP_RST_TASK_WDT:
-    case ESP_RST_WDT:      return "watchdog (travou)";
-    case ESP_RST_BROWNOUT: return "QUEDA DE TENSAO (fonte fraca)";
+    case ESP_RST_WDT:      return "watchdog (travou e reiniciou)";
+    case ESP_RST_BROWNOUT: return "QUEDA DE TENSAO (fonte fraca ou mau contato)";
+    case ESP_RST_EXT:      return "botao reset";
     default:               return "outro";
   }
 }
@@ -456,14 +702,27 @@ const char* motivoReinicio() {
 void setup() {
   releDesligadoSeguro();  // PRIMEIRA coisa: relé desligado
   pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);  // LED apagado
   if (SENSOR_PIN >= 0) pinMode(SENSOR_PIN, INPUT_PULLUP);
 
   Serial.begin(115200);
   delay(200);
   Serial.println();
   Serial.println("=== Portao da garagem (ESP32) ===");
-  Serial.printf("Ultimo reinicio: %s\n", motivoReinicio());
   Serial.println("Teste: digite p (pulso) ou s (status) no Serial Monitor.");
+
+  prefs.begin("portao", false);
+  logSeq = prefs.getUInt("logSeq", 0);
+
+  esp_reset_reason_t r = esp_reset_reason();
+  bool grave = (r == ESP_RST_PANIC || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT ||
+                r == ESP_RST_BROWNOUT);
+  logar(grave ? ERRO : INFO, "ESP32 ligou (firmware %s). Motivo: %s", FW_VERSAO, motivoReinicio());
+  String motivoAnterior = prefs.getString("motivoRest", "");
+  if (motivoAnterior.length()) {
+    logar(AVISO, "Reinicio pedido pelo proprio ESP32: %s", motivoAnterior.c_str());
+    prefs.remove("motivoRest");
+  }
 
   iniciarWifi();
 }

@@ -53,6 +53,29 @@ export interface EstadoEsp {
   visto?: number;
   rssi?: number;
   sensorFechado?: boolean;
+  ip?: string;
+  /** Versão do firmware. */
+  fw?: string;
+  /** Segundos desde que ligou. */
+  uptimeS?: number;
+  /** Motivo do último reinício (texto do ESP32). */
+  reinicio?: string;
+  quedasWifi?: number;
+  foraWifiS?: number;
+  pulsos?: number;
+  ultimoPulsoTs?: number;
+  errosFirebase?: number;
+  heap?: number;
+}
+
+/** Evento do log técnico do ESP32 (/logs/{0..199}). */
+export interface EventoLog {
+  n: number;
+  ts: number;
+  nivel: 'info' | 'aviso' | 'erro';
+  msg: string;
+  /** Segundos desde que o ESP32 ligou, na hora do evento. */
+  up: number;
 }
 
 export interface ConfigApp {
@@ -122,6 +145,10 @@ export class PortaoService {
   readonly historicoTela = signal<ItemHistorico[]>([]);
   readonly historicoTelaCarregado = signal(false);
   private pararHistoricoTela?: Unsubscribe;
+  /** Log técnico do ESP32 (só carrega com a tela de Diagnóstico aberta). */
+  readonly logs = signal<EventoLog[]>([]);
+  readonly logsCarregados = signal(false);
+  private pararLogs?: Unsubscribe;
   readonly erroComando = signal<string | null>(null);
   readonly erroLogin = signal<string | null>(null);
 
@@ -271,6 +298,37 @@ export class PortaoService {
     );
   }
 
+  escutarLogs(): void {
+    if (!this.db || !this.usuario()) return;
+    this.pararLogs?.();
+    this.logsCarregados.set(false);
+    this.pararLogs = onValue(
+      ref(this.db, 'logs'),
+      (s) => {
+        const lista: EventoLog[] = [];
+        s.forEach((filho) => {
+          const v = filho.val() ?? {};
+          lista.push({
+            n: Number(v.n) || 0,
+            ts: Number(v.ts) || 0,
+            nivel: v.nivel === 'erro' || v.nivel === 'aviso' ? v.nivel : 'info',
+            msg: String(v.msg ?? ''),
+            up: Number(v.up) || 0,
+          });
+        });
+        lista.sort((a, b) => b.n - a.n);
+        this.logs.set(lista);
+        this.logsCarregados.set(true);
+      },
+      () => this.logsCarregados.set(true),
+    );
+  }
+
+  pararEscutaLogs(): void {
+    this.pararLogs?.();
+    this.pararLogs = undefined;
+  }
+
   pararFiltroHistorico(): void {
     this.pararHistoricoTela?.();
     this.pararHistoricoTela = undefined;
@@ -280,6 +338,8 @@ export class PortaoService {
     this.escutasLogado.forEach((parar) => parar());
     this.escutasLogado = [];
     this.pararFiltroHistorico();
+    this.pararEscutaLogs();
+    this.logs.set([]);
     this.historicoTela.set([]);
     this.historicoTelaCarregado.set(false);
     this.estado.set(null);

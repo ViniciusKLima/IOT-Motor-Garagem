@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { SwUpdate } from '@angular/service-worker';
+import { Diagnostico } from './diagnostico';
 import { Entrar } from './entrar';
 import { Historico } from './historico';
 import { Portao } from './portao';
@@ -7,7 +8,7 @@ import { PortaoService } from './portao.service';
 
 @Component({
   selector: 'app-root',
-  imports: [Entrar, Portao, Historico],
+  imports: [Entrar, Portao, Historico, Diagnostico],
   template: `
     <div class="tela">
       <header class="cabecalho">
@@ -16,10 +17,13 @@ import { PortaoService } from './portao.service';
           <h1 class="titulo">Portão da garagem</h1>
         </div>
         @if (srv.liberado()) {
-          <div class="pilula" role="status">
+          <button type="button" class="pilula" (click)="aba.set('diagnostico')"
+                  [attr.aria-label]="chip().texto + '. Abrir diagnóstico'" title="Diagnóstico do ESP32">
             <span class="bolinha" [style.background]="chip().cor"></span>
             <span>{{ chip().texto }}</span>
-          </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+          </button>
         }
       </header>
 
@@ -42,12 +46,15 @@ import { PortaoService } from './portao.service';
 
         @if (aba() === 'portao') {
           <app-portao />
-        } @else {
+        } @else if (aba() === 'historico') {
           <app-historico />
+        } @else {
+          <app-diagnostico (voltar)="aba.set('portao')" />
         }
 
         <nav class="barra-flutuante" aria-label="Navegação">
-          <span class="barra-destaque" [class.direita]="aba() === 'historico'" aria-hidden="true"></span>
+          <span class="barra-destaque" [class.direita]="aba() === 'historico'" [class.oculto]="aba() === 'diagnostico'"
+                aria-hidden="true"></span>
           <button type="button" class="aba" [class.ativa]="aba() === 'portao'" (click)="aba.set('portao')"
                   aria-label="Controle do portão" title="Controle do portão"
                   [attr.aria-current]="aba() === 'portao' ? 'page' : null">
@@ -74,7 +81,7 @@ import { PortaoService } from './portao.service';
 })
 export class App {
   protected readonly srv = inject(PortaoService);
-  protected readonly aba = signal<'portao' | 'historico'>('portao');
+  protected readonly aba = signal<'portao' | 'historico' | 'diagnostico'>('portao');
 
   constructor() {
     // App instalado (PWA): quando sai versão nova do site, recarrega sozinho

@@ -28,5 +28,13 @@ O que faz: escuta `/comandos` (stream + releitura a cada 30 s), valida (hora NTP
 - `RELE_LIGA` (LOW/HIGH), `PULSO_MS` (500), `INTERVALO_MIN_MS` (2000), `IDADE_MAX_MS` (10000).
 - `SENSOR_PIN = -1` até o reed existir; depois colocar o pino (ex.: 27) e, no Firebase, `config/sensorInstalado = true`.
 
+## Log técnico e diagnóstico (firmware 1.1.0)
+- **LED da placa desligado** (`LED_STATUS = false`; mude para `true` para o LED mostrar o estado).
+- Eventos vão para o Serial e para **`/logs/{0..199}`** (anel com os últimos 200; `{ n, ts, nivel: info|aviso|erro, msg, up }`). Sem internet, até 40 eventos ficam na memória e são enviados quando voltar. O contador `n` fica na memória flash (sobrevive a reinício).
+- O que é registrado: ligou + motivo do reinício (falta de luz, fonte fraca, travamento); quanto tempo ficou sem sinal antes de ligar; Wi-Fi conectou/caiu (motivo)/voltou (tempo fora); "ainda sem Wi-Fi" a cada 5 min; sinal fraco (< −80 dBm, a cada 30 min); hora sincronizada; conectou no Firebase; erros do Firebase (resumidos a cada 5 min); escuta de comandos caiu; cada comando **executado (PULSO dado)** ou **recusado (motivo)**; pulso de teste pelo USB; reinício pedido pelo próprio ESP32 (10 min sem Firebase, OTA).
+- Com sensor reed: se o portão estava fechado e continua fechado 5 s depois do pulso → erro "pulso dado, mas o portão continuou fechado".
+- `/estado` também traz: `fw`, `uptimeS`, `reinicio`, `quedasWifi`, `foraWifiS`, `pulsos`, `ultimoPulsoTs`, `errosFirebase`, `heap`, `ip`.
+- No site: tocar no chip **"ESP32 online/offline"** → tela **Diagnóstico** (situação, ficha técnica, ajuda "o portão não abriu?" e o log com filtro "Avisos e erros").
+
 ## Ferramentas
 Arduino IDE (placa "ESP32 Dev Module", Serial 115200). O PlatformIO também serve se o Vinícius preferir.

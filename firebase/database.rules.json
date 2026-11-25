@@ -6,35 +6,56 @@
         ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && auth.token.email.toLowerCase().replace('.', ',') === $email"
       }
     },
-
     "config": {
       ".read": "auth != null && ((auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2')",
       ".write": false
     },
-
     "comandos": {
       ".read": "auth != null && auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2'",
-      ".indexOn": ["ts"],
+      ".indexOn": [
+        "ts"
+      ],
       "$id": {
         ".write": "auth != null && ((!data.exists() && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || (auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2' && !newData.exists()))",
         ".validate": "newData.hasChildren(['uid', 'nome', 'acao', 'ts'])",
-        "uid":  { ".validate": "newData.val() === auth.uid" },
-        "nome": { ".validate": "newData.val() === root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).child('nome').val()" },
-        "acao": { ".validate": "newData.val() === 'acionar'" },
-        "ts":   { ".validate": "newData.isNumber() && newData.val() > now - 10000 && newData.val() < now + 5000" },
-        "$outro": { ".validate": false }
+        "uid": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "nome": {
+          ".validate": "newData.val() === root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).child('nome').val()"
+        },
+        "acao": {
+          ".validate": "newData.val() === 'acionar'"
+        },
+        "ts": {
+          ".validate": "newData.isNumber() && newData.val() > now - 10000 && newData.val() < now + 5000"
+        },
+        "$outro": {
+          ".validate": false
+        }
       }
     },
-
     "estado": {
       ".read": "auth != null && ((auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()) || auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2')",
       ".write": "auth != null && auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2'"
     },
-
     "historico": {
       ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
-      ".indexOn": ["ts"],
-      "$id": { ".write": "auth != null && auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2'" }
+      ".indexOn": [
+        "ts"
+      ],
+      "$id": {
+        ".write": "auth != null && auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2'"
+      }
+    },
+    "logs": {
+      ".read": "auth != null && auth.token.email_verified === true && auth.token.firebase.sign_in_provider === 'google.com' && root.child('permitidos').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+      ".indexOn": [
+        "n"
+      ],
+      "$slot": {
+        ".write": "auth != null && auth.uid === 'VH2QhwXbGwhya40QFhiY58C6iEV2'"
+      }
     }
   }
 }

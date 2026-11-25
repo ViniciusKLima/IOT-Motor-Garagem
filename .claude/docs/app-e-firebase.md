@@ -23,6 +23,7 @@
 /comandos/{pushId}   { uid, nome, acao: "acionar", ts }                <- app (ts = relógio do servidor)
 /estado              { visto, rssi, ultimoComandoTs, sensorFechado? }  <- ESP32
 /historico/{pushId}  { nome, acao, ts, resultado }                     <- ESP32 ao executar
+/logs/{0..199}       { n, ts, nivel, msg, up }                         <- ESP32 (log técnico, anel)
 ```
 - A ação é sempre **"acionar"** (um pulso no BOT), porque a central **alterna** abre/para/fecha. O app não diz "abrir" ou "fechar" ao ESP32; isso é só rótulo de tela.
 - **Online/offline** (mesmo padrão do ControleIOT-WEB): o ESP32 grava `/estado/visto` com o timestamp do servidor a cada ~5 s. O app compara com o relógio do servidor (`.info/serverTimeOffset`); mais de ~15 s sem sinal = offline.

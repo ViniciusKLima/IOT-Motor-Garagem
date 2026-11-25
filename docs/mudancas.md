@@ -36,3 +36,7 @@ Diferente do anotado acima (aquilo era o planejado). Conta Google dona do projet
 
 ## 25/11/2026: tempo de curso do portão
 - `/config/tempoCursoMs`: **antes 15000**, agora **9000** (o portão leva 9 s para abrir ou fechar). Alterado pelo Claude no console.
+
+## 25/11/2026: log técnico do ESP32 (`/logs`)
+- **Antes:** regras do commit `a07d014` (sem o nó `/logs`).
+- **Mudança:** regra nova `/logs` (leitura: quem está em `/permitidos` com login Google; escrita: só o UID do ESP32), `.indexOn: ["n"]`. Resto igual.
