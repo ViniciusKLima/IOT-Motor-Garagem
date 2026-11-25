@@ -23,6 +23,7 @@ Abrir o portão da garagem de casa (motor Rossi, portão de correr) pelo celular
 2. **Sem solda**: jumpers, bornes de parafuso, protoboard ou shield com bornes.
 3. **Sem fotocélula** (não usam e não querem). Cuidado extra ao fechar pelo app, sem sensor de obstáculo.
 4. Login simples: **tela com seleção de perfil + PIN numérico**. Sem cadastro; os usuários são criados direto no Firebase. Objetivo: log de **quem** abriu.
+   - **Risco aceito pelo Vinícius (25/11/2026):** os e-mails de login ficam legíveis em `/perfis` (leitura pública) e o PIN de 6 dígitos é a senha no Firebase Auth. Não exigir senha forte nem etapa extra; não reabrir esse assunto. O PIN só vale para este app (não é a senha do Gmail).
 5. O sensor reed fica para depois (comprar). Quando chegar: 1 sensor perto do motor (portão fechado), 2º opcional.
 6. Tudo o que for possível fica junto do motor, numa caixa plástica fechada.
 
