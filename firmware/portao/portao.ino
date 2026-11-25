@@ -331,7 +331,8 @@ void processarComando(const String& id, const String& nome, const String& acao, 
 bool checarComandos() {
   if (!Firebase.RTDB.getJSON(&fbdo, "/comandos")) {
     String erro = fbdo.errorReason();
-    if (fbdo.httpCode() == 404 || erro.indexOf("not found") >= 0) return true;  // vazio
+    // /comandos vazio (ninguém tocou no botão): não é erro
+    if (fbdo.httpCode() == 404 || erro.indexOf("not found") >= 0 || erro.indexOf("path not exist") >= 0) return true;
     Serial.printf("[comandos] erro ao ler: %s\n", erro.c_str());
     return false;
   }
