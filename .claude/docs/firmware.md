@@ -7,18 +7,26 @@
 - Scan inicial mostrando se a rede aparece e em qual canal (revela rede só de 5 GHz).
 - Cria o Wi-Fi próprio `PortaoTeste` para ler o estado no celular sem notebook.
 - Reforça a reconexão: depois de 20 s sem conectar, tenta de novo do zero.
-- Foi escrito sem compilar (sem toolchain Arduino no ambiente). Se der erro de compilação, corrigir.
+- Compilado em 25/11/2026 (core 3.3.13), sem erros.
 
-## Firmware final (a fazer)
-Reaproveitar do sketch de teste: LED de status, eventos do Wi-Fi, log e reconexão forçada.
-1. **Wi-Fi:** reconexão automática + watchdog; `WiFi.setSleep(false)`.
-2. **Hora:** NTP (necessário para validar a idade dos comandos).
-3. **Firebase:** login com usuário próprio do ESP32; escutar `/comandos` (stream ou polling curto).
-4. **Executar comando:** validar idade (< ~10 s), id ainda não executado e cooldown (~2 s); dar o **pulso de 500 ms** no relé (GPIO 26); gravar em `/historico` (nome, ts, resultado).
-5. **Estado:** publicar `/estado` (`visto` com timestamp do servidor a cada ~5 s, `rssi`). Seguir o contrato em `app-e-firebase.md` ("O que o app espera do ESP32"): `/historico` com `resultado` e `comandoId`, e apagar o comando executado. Quando o reed existir, ler o pino (`INPUT_PULLUP`, com debounce) e publicar `sensorFechado`.
-6. **Boot seguro:** relé em nível inativo antes de `pinMode(OUTPUT)`; o portão não pode mexer ao ligar/religar a energia.
-7. **OTA (ArduinoOTA):** atualizar o código pelo Wi-Fi, já que o ESP32 vai ficar fixo numa caixa no portão.
-8. **Falha de Wi-Fi:** o portão continua funcionando pelos controles; o ESP32 só volta a tentar conectar.
+## Firmware final (pronto, compilado em 25/11/2026)
+`firmware/portao/portao.ino`. Compilado com o core ESP32 3.3.13, Firebase Arduino Client (Mobizt) 4.4.17 e ArduinoJson 7.4.3, **sem erros nem avisos**. Ainda **não testado na placa**.
+
+O que faz: escuta `/comandos` (stream + releitura a cada 30 s), valida (hora NTP, idade < 10 s, id não repetido, 2 s entre pulsos), dá o pulso de 500 ms no GPIO 26, grava `/historico` (`resultado`, `comandoId`) e apaga o comando; publica `/estado` (`visto`, `rssi`, `ip`) a cada 5 s; OTA com senha; reinicia sozinho após 10 min sem conseguir falar com o Firebase; relé desligado **antes** de virar saída.
+
+### Como carregar
+1. Copiar `firmware/portao/secrets.example.h` para `firmware/portao/secrets.h` e preencher Wi-Fi, `API_KEY`, e-mail/senha do usuário do ESP32 e uma senha de OTA. O `secrets.h` não vai para o git.
+2. Arduino IDE → placa **ESP32 Dev Module** → **Ferramentas → Partition Scheme → "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)"**. Obrigatório: no esquema padrão o programa ocupa 99% e não sobra espaço para mudanças.
+3. Enviar pelo USB e abrir o Serial Monitor (115200).
+4. **Teste de bancada (sem ligar na central):** digitar `p` + Enter → o relé deve estalar uma vez (meio segundo). `s` + Enter mostra Wi-Fi, hora e Firebase.
+5. **Teste de energia:** tirar e voltar o USB algumas vezes: o relé **não pode** estalar sozinho. Se estalar ou ficar ligado direto, trocar `RELE_LIGA` para `HIGH` (e conferir o jumper/alimentação do módulo, ver `hardware.md`).
+6. Pelo site, tocar no botão: o Serial mostra `[comando] ... ok` e `>>> PULSO`, e o Histórico do site mostra o comando.
+7. Só então ligar o relé na central (COM→GND, NO→BOT, motor fora da tomada ao mexer nos bornes).
+8. Depois de instalado: atualizar pelo Wi-Fi em **Ferramentas → Porta → portao-esp32** (pede a senha de OTA).
+
+### Configurações no topo do código
+- `RELE_LIGA` (LOW/HIGH), `PULSO_MS` (500), `INTERVALO_MIN_MS` (2000), `IDADE_MAX_MS` (10000).
+- `SENSOR_PIN = -1` até o reed existir; depois colocar o pino (ex.: 27) e, no Firebase, `config/sensorInstalado = true`.
 
 ## Ferramentas
 Arduino IDE (placa "ESP32 Dev Module", Serial 115200). O PlatformIO também serve se o Vinícius preferir.
