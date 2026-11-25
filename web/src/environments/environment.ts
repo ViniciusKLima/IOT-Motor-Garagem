@@ -6,6 +6,7 @@ export const environment = {
   firebase: {
     apiKey: 'AIzaSyBd2HXNvDiICJo9EZk1LNxlwS9aNXeWMn8',
     authDomain: 'iot-motor-garagem.firebaseapp.com',
+    databaseURL: 'https://iot-motor-garagem-default-rtdb.firebaseio.com',
     projectId: 'iot-motor-garagem',
     storageBucket: 'iot-motor-garagem.firebasestorage.app',
     messagingSenderId: '786078542912',
