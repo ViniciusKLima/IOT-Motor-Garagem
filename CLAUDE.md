@@ -14,7 +14,7 @@ Abrir o portão da garagem de casa (motor Rossi, portão de correr) pelo celular
 - [ ] Sensor magnético (reed) **ainda não comprado**. Até lá, o estado do portão é **estimado** pelo último comando.
 - [x] Medir o sinal de Wi-Fi no ponto do motor (`firmware/portao_teste_wifi/`): −75 a −77 dBm, 0 quedas em 18 min. Suficiente, sem repetidor por ora.
 - [ ] Confirmar o borne BOT com o teste do fio (ver `.claude/docs/hardware.md`).
-- [x] Site publicado: https://iot-motor-garagem.vercel.app (Vercel, projeto `iot-motor-garagem`, Root Directory `web`; cada push na `main` publica de novo).
+- [x] Site publicado e login Google funcionando: https://iot-motor-garagem.vercel.app (Vercel, projeto `iot-motor-garagem`, Root Directory `web`; cada push na `main` publica de novo).
 - [x] Regras do banco em `firebase/database.rules.json` (trocar `UID_ESP32`).
 - Protótipo visual do app (clicável): https://claude.ai/artifact/5AY6BDTKsBkCRKN25QdbL9
 
