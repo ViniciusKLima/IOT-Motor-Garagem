@@ -40,3 +40,7 @@ Diferente do anotado acima (aquilo era o planejado). Conta Google dona do projet
 ## 25/11/2026: log técnico do ESP32 (`/logs`)
 - **Antes:** regras do commit `a07d014` (sem o nó `/logs`).
 - **Mudança:** regra nova `/logs` (leitura: quem está em `/permitidos` com login Google; escrita: só o UID do ESP32), `.indexOn: ["n"]`. Resto igual.
+
+## 25/11/2026: nova pessoa liberada
+- **Antes:** `/permitidos` com 3 pessoas (Vinícius, Fia, Amauri).
+- **Mudança:** adicionada **Swellen** (e-mail Google dela, a pedido do Vinícius). Para reverter: apagar a chave dela em `/permitidos`.
