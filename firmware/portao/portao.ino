@@ -17,6 +17,12 @@
     O site mostra em: toque no chip "ESP32 online" → Diagnóstico.
   - Atualização pelo Wi-Fi (OTA) com senha.
 
+  - WI-FI DE EMERGÊNCIA: se ficar 1 min sem internet, cria a rede
+    "Portao-ESP32" (senha = OTA_PASSWORD do secrets.h). No celular, conecte
+    nela e abra http://192.168.4.1 para ver o estado e o log (só leitura).
+    Desliga sozinho depois de 5 min funcionando. Com internet, a mesma
+    página abre no IP da casa (aparece no Diagnóstico do site).
+
   Placa: "ESP32 Dev Module", Partition Scheme "Minimal SPIFFS (1.9MB APP
   with OTA)". Serial Monitor: 115200.
   Bibliotecas: "Firebase Arduino Client Library for ESP8266 and ESP32"
@@ -31,6 +37,7 @@
 
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include <WebServer.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <Firebase_ESP_Client.h>
@@ -42,7 +49,7 @@
 
 #include "secrets.h"  // WIFI_SSID, WIFI_PASSWORD, API_KEY, DATABASE_URL, ESP_EMAIL, ESP_PASSWORD, OTA_PASSWORD
 
-const char* FW_VERSAO = "1.1.0";
+const char* FW_VERSAO = "1.2.0";
 
 // ======================================================
 // CONFIGURAÇÃO (confira com o seu hardware)
@@ -85,6 +92,11 @@ const unsigned long SEM_FIREBASE_REINICIA_MS = 10UL * 60UL * 1000UL; // 10 min s
 const unsigned long LOG_REPETIDO_MS = 5UL * 60UL * 1000UL;  // não repetir o mesmo aviso antes disso
 const int SINAL_FRACO_DBM = -80;
 
+// Wi-Fi de emergência (página de log no próprio ESP32)
+const char* AP_SSID = "Portao-ESP32";            // senha: OTA_PASSWORD (secrets.h)
+const unsigned long AP_LIGA_SEM_WIFI_MS = 60000;           // liga após 1 min sem Wi-Fi
+const unsigned long AP_DESLIGA_ESTAVEL_MS = 5UL * 60UL * 1000UL;  // desliga após 5 min estável
+
 // ======================================================
 // ESTADO
 // ======================================================
@@ -117,6 +129,7 @@ volatile bool evWifiConectou = false;
 volatile bool evWifiCaiu = false;
 volatile int evWifiMotivo = 0;
 bool wifiConectadoAntes = false;
+unsigned long wifiConectadoDesde = 0;
 unsigned long wifiForaDesde = 0;
 unsigned long wifiForaTotalMs = 0;
 int wifiQuedas = 0;
@@ -195,6 +208,24 @@ int evQtd = 0;
 int eventosPerdidos = 0;
 uint32_t logSeq = 0;
 
+// Cópia dos últimos eventos para a página do Wi-Fi de emergência
+const int LOCAL_MAX = 60;
+char logLocal[LOCAL_MAX][160];
+int localPos = 0;
+int localQtd = 0;
+
+String carimbo() {
+  if (horaValida()) {
+    time_t t = time(nullptr) - 3 * 3600;  // horário de Brasília (UTC-3)
+    struct tm tmv;
+    gmtime_r(&t, &tmv);
+    char b[24];
+    strftime(b, sizeof(b), "%d/%m %H:%M:%S", &tmv);
+    return String(b);
+  }
+  return "ligado ha " + duracao(millis());
+}
+
 void logar(int nivel, const char* fmt, ...) {
   char msg[120];
   va_list args;
@@ -202,6 +233,9 @@ void logar(int nivel, const char* fmt, ...) {
   vsnprintf(msg, sizeof(msg), fmt, args);
   va_end(args);
   Serial.printf("[%s] %s\n", nomeNivel(nivel), msg);
+  snprintf(logLocal[localPos], sizeof(logLocal[0]), "%s|%s|%s", carimbo().c_str(), nomeNivel(nivel), msg);
+  localPos = (localPos + 1) % LOCAL_MAX;
+  if (localQtd < LOCAL_MAX) localQtd++;
 
   if (evQtd == EVENTOS_MAX) {  // fila cheia: descarta o mais antigo
     evIni = (evIni + 1) % EVENTOS_MAX;
@@ -358,6 +392,7 @@ void cuidarWifi() {
     evWifiConectou = false;
     if (!wifiConectadoAntes) {
       wifiConectadoAntes = true;
+      wifiConectadoDesde = millis();
       unsigned long fora = millis() - wifiForaDesde;
       if (wifiQuedas == 0) {
         logar(INFO, "Wi-Fi conectado em %s (sinal %d dBm, canal %d, IP %s)", duracao(fora).c_str(), WiFi.RSSI(),
@@ -400,6 +435,101 @@ void cuidarWifi() {
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
+}
+
+// ======================================================
+// WI-FI DE EMERGÊNCIA + PÁGINA DE LOG (somente leitura)
+// ======================================================
+
+WebServer servidor(80);
+bool servidorIniciado = false;
+bool apLigado = false;
+
+String escapar(const char* t) {
+  String r;
+  for (const char* c = t; *c; c++) {
+    if (*c == '<') r += "&lt;";
+    else if (*c == '>') r += "&gt;";
+    else if (*c == '&') r += "&amp;";
+    else r += *c;
+  }
+  return r;
+}
+
+const char* motivoReinicio();
+
+void paginaLog() {
+  bool ok = WiFi.status() == WL_CONNECTED;
+  String h;
+  h.reserve(12000);
+  h += "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
+       "<meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='5'>"
+       "<title>Portao - log</title><style>body{font-family:system-ui,sans-serif;background:#12161c;color:#e8ecf1;"
+       "margin:0;padding:16px}h1{font-size:22px;margin:0 0 12px}.c{background:#1b212a;border-radius:14px;padding:14px;"
+       "margin:0 0 12px;font-size:14px;line-height:1.6}.k{color:#9aa6b2}ol{list-style:none;margin:0;padding:0}"
+       "li{padding:8px 10px;border-left:3px solid transparent;border-top:1px solid #2a3340;font-size:13px}"
+       "li.aviso{border-left-color:#ffc24d}li.erro{border-left-color:#ff8a7a}.t{color:#9aa6b2;margin-right:8px}"
+       "</style></head><body><h1>Portao - ESP32</h1><div class='c'>";
+  h += "<b style='color:" + String(ok ? "#5ee0a0" : "#ff8a7a") + "'>" +
+       String(ok ? "Wi-Fi conectado" : "SEM Wi-Fi (tentando)") + "</b><br>";
+  h += "<span class='k'>Sinal:</span> " + (ok ? String(WiFi.RSSI()) + " dBm" : String("--")) + " &nbsp; ";
+  h += "<span class='k'>IP:</span> " + (ok ? WiFi.localIP().toString() : String("--")) + "<br>";
+  h += "<span class='k'>Firebase:</span> " +
+       String(firebaseIniciado && Firebase.ready() ? "ok" : "nao conectado") + " &nbsp; ";
+  h += "<span class='k'>Hora:</span> " + String(horaValida() ? "ok" : "sem hora") + "<br>";
+  h += "<span class='k'>Ligado ha:</span> " + duracao(millis()) + " &nbsp; ";
+  h += "<span class='k'>Quedas de Wi-Fi:</span> " + String(wifiQuedas) + "<br>";
+  h += "<span class='k'>Pulsos:</span> " + String(pulsos) + " &nbsp; ";
+  h += "<span class='k'>Firmware:</span> " + String(FW_VERSAO) + "<br>";
+  h += "<span class='k'>Ultimo reinicio:</span> " + String(motivoReinicio()) + "</div>";
+  h += "<div class='c' style='padding:0'><ol>";
+  for (int i = 0; i < localQtd; i++) {  // mais novo primeiro
+    int idx = (localPos - 1 - i + LOCAL_MAX) % LOCAL_MAX;
+    const char* linha = logLocal[idx];
+    const char* p1 = strchr(linha, '|');
+    const char* p2 = p1 ? strchr(p1 + 1, '|') : nullptr;
+    if (!p1 || !p2) continue;
+    String quando = String(linha).substring(0, p1 - linha);
+    String nivel = String(p1 + 1).substring(0, p2 - p1 - 1);
+    h += "<li class='" + nivel + "'><span class='t'>" + quando + "</span>" + escapar(p2 + 1) + "</li>";
+  }
+  h += "</ol></div><p class='k' style='font-size:12px'>Atualiza a cada 5 s. Somente leitura.</p></body></html>";
+  servidor.send(200, "text/html; charset=utf-8", h);
+}
+
+void iniciarServidor() {
+  if (servidorIniciado) return;
+  servidor.on("/", paginaLog);
+  servidor.begin();
+  servidorIniciado = true;
+}
+
+void ligarAp() {
+  if (apLigado) return;
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, OTA_PASSWORD);
+  apLigado = true;
+  iniciarServidor();
+  logar(AVISO, "Wi-Fi de emergencia LIGADO: rede %s, abra http://192.168.4.1", AP_SSID);
+}
+
+void desligarAp() {
+  if (!apLigado) return;
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  apLigado = false;
+  logar(INFO, "Wi-Fi de emergencia desligado (conexao estavel ha 5 min)");
+}
+
+void cuidarAp() {
+  bool conectado = WiFi.status() == WL_CONNECTED;
+  if (conectado) iniciarServidor();  // a página também abre pelo IP da casa
+  if (!apLigado && !conectado && millis() - wifiForaDesde > AP_LIGA_SEM_WIFI_MS) ligarAp();
+  if (apLigado && conectado && wifiConectadoAntes && Firebase.ready() &&
+      millis() - wifiConectadoDesde > AP_DESLIGA_ESTAVEL_MS) {
+    desligarAp();
+  }
+  if (servidorIniciado) servidor.handleClient();
 }
 
 // ======================================================
@@ -666,6 +796,8 @@ void cuidarFirebase() {
 // SERIAL (teste de bancada)
 // ======================================================
 
+const char* motivoReinicio();
+
 void cuidarSerial() {
   if (!Serial.available()) return;
   char c = Serial.read();
@@ -732,6 +864,7 @@ void loop() {
   cuidarSerial();
   cuidarSensor();
   cuidarWifi();
+  cuidarAp();
   cuidarOta();
   cuidarFirebase();
 }

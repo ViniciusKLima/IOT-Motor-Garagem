@@ -36,5 +36,11 @@ O que faz: escuta `/comandos` (stream + releitura a cada 30 s), valida (hora NTP
 - `/estado` também traz: `fw`, `uptimeS`, `reinicio`, `quedasWifi`, `foraWifiS`, `pulsos`, `ultimoPulsoTs`, `errosFirebase`, `heap`, `ip`.
 - No site: tocar no chip **"ESP32 online/offline"** → tela **Diagnóstico** (situação, ficha técnica, ajuda "o portão não abriu?" e o log com filtro "Avisos e erros").
 
+## Wi-Fi de emergência (firmware 1.2.0)
+- Se ficar **1 min sem Wi-Fi** (inclusive logo ao ligar), o ESP32 cria a rede **`Portao-ESP32`** (senha = `OTA_PASSWORD` do `secrets.h`).
+- No celular, conectar nela e abrir **http://192.168.4.1**: estado (Wi-Fi, sinal, Firebase, hora, quedas, pulsos, reinício) e os **últimos 60 eventos**. Atualiza a cada 5 s. **Somente leitura** (não aciona o portão).
+- Desliga sozinho depois de **5 min** conectado com Firebase ok. Com internet, a mesma página abre pelo IP da casa (aparece no Diagnóstico do site).
+- Limitação: enquanto o ESP32 procura o roteador, ele pode trocar de canal e o celular cair dessa rede por alguns segundos; é só reconectar.
+
 ## Ferramentas
 Arduino IDE (placa "ESP32 Dev Module", Serial 115200). O PlatformIO também serve se o Vinícius preferir.
